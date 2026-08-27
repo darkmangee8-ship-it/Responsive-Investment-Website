@@ -69,7 +69,7 @@ export default function Register() {
       errs.lastName = "Last name is required.";
     }
 
-    if (!form.email.includes("@")) {
+    if (!form.email.trim() || !form.email.includes("@")) {
       errs.email = "Enter a valid email address.";
     }
 
@@ -99,8 +99,13 @@ export default function Register() {
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
 
+    if (loading) {
+      return;
+    }
+
     setError("");
     setSuccess("");
+    setFieldErrors({});
 
     const errs = validate();
 
@@ -112,56 +117,78 @@ export default function Register() {
     setLoading(true);
 
     try {
-      const { data, error: signUpError } = await supabase.auth.signUp({
-        email: form.email.trim(),
-        password: form.password,
-        options: {
-          data: {
-            first_name: form.firstName.trim(),
-            last_name: form.lastName.trim(),
-            country: form.country,
-            phone: form.phone.trim(),
+      const email = form.email.trim().toLowerCase();
+      const firstName = form.firstName.trim();
+      const lastName = form.lastName.trim();
+      const country = form.country;
+      const phone = form.phone.trim();
+
+      /*
+       * Create the Supabase Auth account.
+       *
+       * The information below is stored in
+       * auth.users.raw_user_meta_data.
+       *
+       * Our database trigger:
+       *
+       * on_auth_user_created
+       *
+       * reads this metadata and automatically creates
+       * the user's profile and wallet.
+       */
+      const { data, error: signUpError } =
+        await supabase.auth.signUp({
+          email,
+          password: form.password,
+          options: {
+            data: {
+              first_name: firstName,
+              last_name: lastName,
+              country,
+              phone,
+            },
           },
-        },
-      });
+        });
 
       if (signUpError) {
+        console.error("SIGNUP ERROR:", signUpError);
         throw signUpError;
       }
 
       if (!data.user) {
-        throw new Error("Registration failed. Please try again.");
-      }
-
-      /*
-       * Create/update the user's profile.
-       */
-      const { error: profileError } = await supabase
-        .from("profiles")
-        .upsert(
-          {
-            id: data.user.id,
-            first_name: form.firstName.trim(),
-            last_name: form.lastName.trim(),
-            email: form.email.trim(),
-            country: form.country,
-            phone: form.phone.trim(),
-          },
-          {
-            onConflict: "id",
-          }
-        );
-
-      if (profileError) {
-        console.error("Profile creation error:", profileError);
-
         throw new Error(
-          "Your account was created, but we could not save your profile information. Please contact support."
+          "Registration failed. No user account was created."
         );
       }
 
       /*
-       * Email confirmation enabled.
+       * IMPORTANT:
+       *
+       * We do NOT insert into profiles here.
+       *
+       * The database trigger automatically creates:
+       *
+       * profiles:
+       * - id
+       * - first_name
+       * - last_name
+       * - email
+       * - country
+       * - phone
+       *
+       * wallets:
+       * - user_id
+       * - available_balance = 0
+       * - invested_balance = 0
+       * - total_profit = 0
+       */
+
+      /*
+       * Email confirmation is enabled.
+       *
+       * Supabase creates the Auth user but does not give
+       * the browser an active session until the email
+       * is confirmed.
        */
       if (!data.session) {
         setSuccess(
@@ -183,14 +210,30 @@ export default function Register() {
       }
 
       /*
-       * Email confirmation disabled.
+       * Email confirmation is disabled, so the user
+       * already has an active session.
        */
-      navigate("/dashboard");
+      navigate("/dashboard", { replace: true });
     } catch (err) {
-      const message =
-        err instanceof Error
-          ? err.message
-          : "Unable to create your account. Please try again.";
+      console.error("REGISTRATION ERROR:", err);
+
+      let message =
+        "Unable to create your account. Please try again.";
+
+      if (err instanceof Error) {
+        message = err.message;
+      }
+
+      /*
+       * Make Supabase's rate-limit message easier to understand.
+       */
+      if (
+        message.toLowerCase().includes("too many requests") ||
+        message.includes("429")
+      ) {
+        message =
+          "Too many signup attempts. Please wait a few minutes and try again.";
+      }
 
       setError(message);
     } finally {
@@ -201,11 +244,10 @@ export default function Register() {
   const inputStyle = (hasError?: boolean) => ({
     background: "rgba(255,255,255,0.03)",
     color: "#f5f0e8",
-    border: `1px solid ${
-      hasError
-        ? "rgba(220,80,80,0.5)"
-        : "rgba(212,160,23,0.2)"
-    }`,
+    border: `1px solid ${hasError
+      ? "rgba(220,80,80,0.5)"
+      : "rgba(212,160,23,0.2)"
+      }`,
     outline: "none",
     width: "100%",
     padding: "0.875rem 1rem",
@@ -305,7 +347,10 @@ export default function Register() {
                 />
 
                 {fieldErrors.firstName && (
-                  <p className="text-xs mt-1" style={{ color: "#e05050" }}>
+                  <p
+                    className="text-xs mt-1"
+                    style={{ color: "#e05050" }}
+                  >
                     {fieldErrors.firstName}
                   </p>
                 )}
@@ -328,7 +373,10 @@ export default function Register() {
                 />
 
                 {fieldErrors.lastName && (
-                  <p className="text-xs mt-1" style={{ color: "#e05050" }}>
+                  <p
+                    className="text-xs mt-1"
+                    style={{ color: "#e05050" }}
+                  >
                     {fieldErrors.lastName}
                   </p>
                 )}
@@ -353,7 +401,10 @@ export default function Register() {
               />
 
               {fieldErrors.email && (
-                <p className="text-xs mt-1" style={{ color: "#e05050" }}>
+                <p
+                  className="text-xs mt-1"
+                  style={{ color: "#e05050" }}
+                >
                   {fieldErrors.email}
                 </p>
               )}
@@ -371,7 +422,10 @@ export default function Register() {
                 onChange={handleChange}
                 style={inputStyle(!!fieldErrors.country)}
               >
-                <option value="" style={{ background: "#111118" }}>
+                <option
+                  value=""
+                  style={{ background: "#111118" }}
+                >
                   Select your country
                 </option>
 
@@ -387,7 +441,10 @@ export default function Register() {
               </select>
 
               {fieldErrors.country && (
-                <p className="text-xs mt-1" style={{ color: "#e05050" }}>
+                <p
+                  className="text-xs mt-1"
+                  style={{ color: "#e05050" }}
+                >
                   {fieldErrors.country}
                 </p>
               )}
@@ -410,7 +467,10 @@ export default function Register() {
               />
 
               {fieldErrors.phone && (
-                <p className="text-xs mt-1" style={{ color: "#e05050" }}>
+                <p
+                  className="text-xs mt-1"
+                  style={{ color: "#e05050" }}
+                >
                   {fieldErrors.phone}
                 </p>
               )}
@@ -433,7 +493,10 @@ export default function Register() {
               />
 
               {fieldErrors.password && (
-                <p className="text-xs mt-1" style={{ color: "#e05050" }}>
+                <p
+                  className="text-xs mt-1"
+                  style={{ color: "#e05050" }}
+                >
                   {fieldErrors.password}
                 </p>
               )}
@@ -456,7 +519,10 @@ export default function Register() {
               />
 
               {fieldErrors.confirmPassword && (
-                <p className="text-xs mt-1" style={{ color: "#e05050" }}>
+                <p
+                  className="text-xs mt-1"
+                  style={{ color: "#e05050" }}
+                >
                   {fieldErrors.confirmPassword}
                 </p>
               )}
@@ -480,25 +546,37 @@ export default function Register() {
                   style={{ color: "#9090a8" }}
                 >
                   I have read and agree to the{" "}
-                  <Link to="/terms" style={{ color: "#d4a017" }}>
+                  <Link
+                    to="/terms"
+                    style={{ color: "#d4a017" }}
+                  >
                     Terms of Service
                   </Link>
                   ,{" "}
-                  <Link to="/privacy" style={{ color: "#d4a017" }}>
+                  <Link
+                    to="/privacy"
+                    style={{ color: "#d4a017" }}
+                  >
                     Privacy Policy
                   </Link>
                   , and{" "}
-                  <Link to="/risk-disclosure" style={{ color: "#d4a017" }}>
+                  <Link
+                    to="/risk-disclosure"
+                    style={{ color: "#d4a017" }}
+                  >
                     Risk Disclosure
                   </Link>
-                  . I understand that investment involves risk and returns
-                  are not guaranteed.
+                  . I understand that investment involves risk and
+                  returns are not guaranteed.
                 </span>
 
               </label>
 
               {fieldErrors.agreed && (
-                <p className="text-xs mt-2" style={{ color: "#e05050" }}>
+                <p
+                  className="text-xs mt-2"
+                  style={{ color: "#e05050" }}
+                >
                   {fieldErrors.agreed}
                 </p>
               )}
@@ -513,6 +591,7 @@ export default function Register() {
                 background: loading ? "#a07c10" : "#d4a017",
                 color: "#09090e",
                 cursor: loading ? "wait" : "pointer",
+                opacity: loading ? 0.8 : 1,
               }}
             >
               {loading ? "Creating account…" : "Create Account"}
