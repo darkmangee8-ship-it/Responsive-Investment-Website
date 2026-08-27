@@ -462,7 +462,7 @@ export default function Register() {
                 value={form.phone}
                 onChange={handleChange}
                 style={inputStyle(!!fieldErrors.phone)}
-                placeholder="+234 801 234 5678"
+                placeholder="+1 8012345678"
                 autoComplete="tel"
               />
 
