@@ -74,7 +74,7 @@ export default function AdminDashboard() {
   const [message, setMessage] = useState("");
 
   const [activeSection, setActiveSection] = useState<
-    "overview" | "users" | "deposits" | "audit"
+    "overview" | "users" | "deposits" | "notifications" | "audit"
   >("overview");
 
   const [search, setSearch] = useState("");
@@ -85,6 +85,23 @@ export default function AdminDashboard() {
     "ADD" | "SUBTRACT"
   >("ADD");
   const [balanceReason, setBalanceReason] = useState("");
+  const [notificationUser, setNotificationUser] = useState<User | null>(null);
+  const [notificationTitle, setNotificationTitle] = useState("");
+  const [notificationMessage, setNotificationMessage] = useState("");
+  const [sendingNotification, setSendingNotification] = useState(false);
+  type Notification = {
+    id: string;
+    user_id: string;
+    title: string;
+    message: string;
+    read: boolean;
+    created_at: string;
+    user_name?: string | null;
+    user_email?: string | null;
+  };
+
+  const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [loadingNotifications, setLoadingNotifications] = useState(false);
 
   useEffect(() => {
     checkAdmin();
@@ -140,6 +157,7 @@ export default function AdminDashboard() {
       loadDeposits(),
       loadAuditLogs(),
       loadStats(),
+      loadNotifications(),
     ]);
   }
 
@@ -195,6 +213,86 @@ export default function AdminDashboard() {
     }
 
     setStats(data as Stats);
+  }
+
+  async function loadNotifications() {
+    setLoadingNotifications(true);
+
+    const { data, error } = await supabase.rpc(
+      "admin_get_notifications"
+    );
+
+    if (error) {
+      console.error("NOTIFICATIONS ERROR:", error);
+      setError(error.message);
+      setLoadingNotifications(false);
+      return;
+    }
+
+    setNotifications((data ?? []) as Notification[]);
+    setLoadingNotifications(false);
+  }
+
+  async function sendNotification() {
+    if (sendingNotification) return;
+
+    setError("");
+    setMessage("");
+
+    if (!notificationUser) {
+      setError("Please select a user.");
+      return;
+    }
+
+    if (!notificationTitle.trim()) {
+      setError("Please enter a notification title.");
+      return;
+    }
+
+    if (!notificationMessage.trim()) {
+      setError("Please enter a notification message.");
+      return;
+    }
+
+    setSendingNotification(true);
+
+    try {
+      const { data, error } = await supabase.rpc(
+        "admin_send_notification",
+        {
+          p_user_id: notificationUser.id,
+          p_title: notificationTitle.trim(),
+          p_message: notificationMessage.trim(),
+        }
+      );
+
+      if (error) {
+        console.error("SEND NOTIFICATION ERROR:", error);
+        setError(error.message);
+        return;
+      }
+
+      if (!data?.success) {
+        setError(data?.message ?? "Unable to send notification.");
+        return;
+      }
+
+      setMessage(
+        `Notification sent to ${notificationUser.first_name ||
+        notificationUser.email ||
+        "user"
+        }.`
+      );
+
+      setNotificationUser(null);
+      setNotificationTitle("");
+      setNotificationMessage("");
+    } catch (err) {
+      console.error("SEND NOTIFICATION ERROR:", err);
+      setError("Unable to send notification.");
+    } finally {
+      setSendingNotification(false);
+    }
   }
 
   async function approveDeposit(depositId: string) {
@@ -536,6 +634,7 @@ export default function AdminDashboard() {
             ["overview", "Overview"],
             ["users", "Users"],
             ["deposits", "Deposits"],
+            ["notifications", "Notifications"],
             ["audit", "Audit History"],
           ].map(([value, label]) => (
             <button
@@ -546,6 +645,7 @@ export default function AdminDashboard() {
                   | "overview"
                   | "users"
                   | "deposits"
+                  | "notifications"
                   | "audit"
                 )
               }
@@ -1202,6 +1302,224 @@ export default function AdminDashboard() {
 
             </div>
 
+          </div>
+        )}
+
+
+        {/* ==================================================
+            NOTIFICATIONS
+        ================================================== */}
+
+        {activeSection === "notifications" && (
+          <div>
+            <div className="mb-8">
+              <h2 className="text-3xl font-black">Notifications</h2>
+              <p className="mt-2" style={{ color: "#9090a8" }}>
+                Send messages to users and view notification history.
+              </p>
+            </div>
+
+            <div
+              className="mb-8 border p-6"
+              style={{
+                background: "#111118",
+                borderColor: "rgba(212,160,23,0.15)",
+              }}
+            >
+              <h3 className="mb-6 text-xl font-bold">Send Notification</h3>
+
+              <div className="mb-5">
+                <label className="mb-2 block text-sm font-semibold">
+                  Select User
+                </label>
+                <select
+                  value={notificationUser?.id ?? ""}
+                  onChange={(e) => {
+                    const selectedUser = users.find(
+                      (user) => user.id === e.target.value
+                    );
+                    setNotificationUser(selectedUser ?? null);
+                  }}
+                  className="w-full border px-4 py-3 outline-none"
+                  style={{
+                    background: "#0d0d14",
+                    color: "#f5f0e8",
+                    borderColor: "rgba(212,160,23,0.2)",
+                  }}
+                >
+                  <option value="">Select a user</option>
+                  {users
+                    .filter((user) => !user.is_admin)
+                    .map((user) => (
+                      <option key={user.id} value={user.id}>
+                        {getUserName(user)}
+                        {user.email ? ` — ${user.email}` : ""}
+                      </option>
+                    ))}
+                </select>
+              </div>
+
+              <div className="mb-5">
+                <label className="mb-2 block text-sm font-semibold">
+                  Notification Title
+                </label>
+                <input
+                  type="text"
+                  value={notificationTitle}
+                  onChange={(e) => setNotificationTitle(e.target.value)}
+                  placeholder="Enter notification title"
+                  className="w-full border px-4 py-3 outline-none"
+                  style={{
+                    background: "#0d0d14",
+                    color: "#f5f0e8",
+                    borderColor: "rgba(212,160,23,0.2)",
+                  }}
+                />
+              </div>
+
+              <div className="mb-5">
+                <label className="mb-2 block text-sm font-semibold">
+                  Message
+                </label>
+                <textarea
+                  value={notificationMessage}
+                  onChange={(e) => setNotificationMessage(e.target.value)}
+                  placeholder="Write your message to the user..."
+                  rows={6}
+                  className="w-full resize-y border px-4 py-3 outline-none"
+                  style={{
+                    background: "#0d0d14",
+                    color: "#f5f0e8",
+                    borderColor: "rgba(212,160,23,0.2)",
+                  }}
+                />
+              </div>
+
+              <button
+                onClick={sendNotification}
+                disabled={sendingNotification}
+                className="px-6 py-3 font-bold"
+                style={{
+                  background: sendingNotification ? "#555" : "#d4a017",
+                  color: "#09090e",
+                  cursor: sendingNotification ? "not-allowed" : "pointer",
+                }}
+              >
+                {sendingNotification ? "Sending..." : "Send Notification"}
+              </button>
+            </div>
+
+            <div>
+              <div className="mb-5 flex items-center justify-between">
+                <div>
+                  <h3 className="text-2xl font-black">Notification History</h3>
+                  <p className="mt-1 text-sm" style={{ color: "#9090a8" }}>
+                    Previously sent notifications.
+                  </p>
+                </div>
+                <button
+                  onClick={loadNotifications}
+                  className="border px-4 py-2 text-sm font-semibold"
+                  style={{
+                    borderColor: "rgba(212,160,23,0.2)",
+                    color: "#d4a017",
+                  }}
+                >
+                  Refresh
+                </button>
+              </div>
+
+              {loadingNotifications ? (
+                <div
+                  className="border p-8 text-center"
+                  style={{
+                    background: "#111118",
+                    borderColor: "rgba(255,255,255,0.08)",
+                    color: "#9090a8",
+                  }}
+                >
+                  Loading notification history...
+                </div>
+              ) : notifications.length === 0 ? (
+                <div
+                  className="border p-8 text-center"
+                  style={{
+                    background: "#111118",
+                    borderColor: "rgba(255,255,255,0.08)",
+                    color: "#9090a8",
+                  }}
+                >
+                  No notifications have been sent yet.
+                </div>
+              ) : (
+                <div
+                  className="overflow-hidden border"
+                  style={{
+                    background: "#111118",
+                    borderColor: "rgba(255,255,255,0.08)",
+                  }}
+                >
+                  <div className="overflow-x-auto">
+                    <table className="w-full min-w-[760px] text-sm">
+                      <thead>
+                        <tr
+                          className="border-b text-left"
+                          style={{ borderColor: "rgba(255,255,255,0.08)" }}
+                        >
+                          <th className="p-5">User</th>
+                          <th className="p-5">Notification</th>
+                          <th className="p-5">Message</th>
+                          <th className="p-5">Status</th>
+                          <th className="p-5">Date</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {notifications.map((notification) => (
+                          <tr
+                            key={notification.id}
+                            className="border-b"
+                            style={{ borderColor: "rgba(255,255,255,0.06)" }}
+                          >
+                            <td className="p-5">
+                              <div className="font-bold">
+                                {notification.user_name || "Unnamed User"}
+                              </div>
+                              <div className="mt-1 text-xs" style={{ color: "#777789" }}>
+                                {notification.user_email || "No email"}
+                              </div>
+                            </td>
+                            <td className="p-5">
+                              <div className="font-semibold">{notification.title}</div>
+                            </td>
+                            <td className="max-w-md p-5">
+                              <p className="line-clamp-3" style={{ color: "#9090a8" }}>
+                                {notification.message}
+                              </p>
+                            </td>
+                            <td className="p-5">
+                              <span
+                                className="inline-block px-3 py-1 text-xs font-bold"
+                                style={{
+                                  background: notification.read
+                                    ? "rgba(255,255,255,0.05)"
+                                    : "rgba(212,160,23,0.1)",
+                                  color: notification.read ? "#9090a8" : "#d4a017",
+                                }}
+                              >
+                                {notification.read ? "READ" : "UNREAD"}
+                              </span>
+                            </td>
+                            <td className="whitespace-nowrap p-5" style={{ color: "#9090a8" }}>
+                              {new Date(notification.created_at).toLocaleString()}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
         )}
 

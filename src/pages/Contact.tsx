@@ -59,7 +59,7 @@ export default function Contact() {
                   </div>
                   <div>
                     <p className="text-xs font-semibold uppercase tracking-widest mb-1" style={{ color: "#9090a8" }}>{c.label}</p>
-                    <p className="text-sm" style={{ color: "#f5f0e8" }}>{c.value}</p>
+                    <p className="break-words text-sm" style={{ color: "#f5f0e8" }}>{c.value}</p>
                   </div>
                 </div>
               ))}

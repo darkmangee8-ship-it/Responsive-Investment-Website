@@ -32,7 +32,6 @@ export default function Dashboard() {
   const [wallet, setWallet] = useState<Wallet | null>(null);
   const [investments, setInvestments] = useState<Investment[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
-  const [email, setEmail] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -54,8 +53,6 @@ export default function Dashboard() {
         navigate("/login", { replace: true });
         return;
       }
-
-      setEmail(user.email ?? "");
 
       /*
        * WALLET
@@ -130,11 +127,6 @@ export default function Dashboard() {
     }
   }
 
-  async function handleLogout() {
-    await supabase.auth.signOut();
-    navigate("/login", { replace: true });
-  }
-
   function money(value: number | null | undefined) {
     return `$${Number(value ?? 0).toLocaleString("en-US", {
       minimumFractionDigits: 2,
@@ -187,6 +179,10 @@ export default function Dashboard() {
     0
   );
 
+  const totalWalletBalance =
+    Number(wallet?.available_balance ?? 0) +
+    calculatedTotalProfit;
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -219,496 +215,370 @@ export default function Dashboard() {
   }
 
   return (
-    <div
-      className="min-h-screen"
-      style={{
-        background: "#09090e",
-        color: "#f5f0e8",
-      }}
-    >
-      <div className="max-w-7xl mx-auto px-5 py-7 lg:px-8 lg:py-10">
+    <div className="fade-up">
+      <div className="mb-8">
+        <h1 className="text-3xl lg:text-4xl font-black">
+          Dashboard
+        </h1>
 
-        {/* HEADER */}
-
-        <header
-          className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-5 mb-10 pb-6 border-b"
-          style={{
-            borderColor: "rgba(212,160,23,0.15)",
-          }}
+        <p
+          className="mt-2 text-sm"
+          style={{ color: "#9090a8" }}
         >
+          Welcome back. Here's your account overview.
+        </p>
+      </div>
+
+      {/* WALLET / OVERVIEW CARDS */}
+
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4 xl:grid-cols-4">
+
+        <StatCard
+          title="Total Wallet Balance"
+          value={money(totalWalletBalance)}
+          gold
+        />
+
+        <StatCard
+          title="Available Balance"
+          value={money(wallet?.available_balance)}
+        />
+
+        <StatCard
+          title="Invested Balance"
+          value={money(calculatedInvestedBalance)}
+        />
+
+        <StatCard
+          title="Total Profit"
+          value={money(calculatedTotalProfit)}
+        />
+
+      </div>
+
+      {/* QUICK ACTIONS */}
+
+      <div className="mt-8 grid grid-cols-1 gap-3 sm:grid-cols-3 sm:gap-4">
+
+        <ActionButton
+          to="/dashboard/deposit"
+          title="Deposit"
+          description="Fund your wallet"
+        />
+
+        <ActionButton
+          to="/dashboard/plans"
+          title="Invest"
+          description="Choose an investment plan"
+        />
+
+        <ActionButton
+          to="/dashboard/withdraw"
+          title="Withdraw"
+          description="Request a withdrawal"
+        />
+
+      </div>
+
+      {/* INVESTMENTS */}
+
+      <section className="mt-10">
+
+        <div className="flex items-center justify-between mb-5">
+
           <div>
-            <Link
-              to="/"
-              className="text-xl font-black"
-            >
-              Musk Enterprise
-            </Link>
+            <h2 className="text-xl font-bold">
+              Your Investments
+            </h2>
 
             <p
               className="text-sm mt-1"
               style={{ color: "#9090a8" }}
             >
-              {email}
+              Your current investment positions.
             </p>
           </div>
 
-          <button
-            onClick={handleLogout}
-            className="px-5 py-3 text-sm font-semibold border w-fit"
-            style={{
-              borderColor: "rgba(212,160,23,0.3)",
-              color: "#d4a017",
-            }}
+          <Link
+            to="/dashboard/investments"
+            className="text-sm"
+            style={{ color: "#d4a017" }}
           >
-            Sign out
-          </button>
-        </header>
-
-        {/* MOBILE NAVIGATION */}
-
-        <nav className="lg:hidden mb-8 overflow-x-auto">
-          <div className="flex gap-2 min-w-max">
-
-            <Link
-              to="/dashboard"
-              className="px-4 py-2 text-sm font-semibold"
-              style={{
-                background: "#d4a017",
-                color: "#09090e",
-              }}
-            >
-              Overview
-            </Link>
-
-            <Link
-              to="/dashboard/wallet"
-              className="px-4 py-2 text-sm border"
-              style={{
-                borderColor: "rgba(212,160,23,0.2)",
-              }}
-            >
-              Wallet
-            </Link>
-
-            <Link
-              to="/dashboard/plans"
-              className="px-4 py-2 text-sm border"
-              style={{
-                borderColor: "rgba(212,160,23,0.2)",
-              }}
-            >
-              Plans
-            </Link>
-
-            <Link
-              to="/dashboard/investments"
-              className="px-4 py-2 text-sm border"
-              style={{
-                borderColor: "rgba(212,160,23,0.2)",
-              }}
-            >
-              Investments
-            </Link>
-
-            <Link
-              to="/dashboard/deposit"
-              className="px-4 py-2 text-sm border"
-              style={{
-                borderColor: "rgba(212,160,23,0.2)",
-              }}
-            >
-              Deposit
-            </Link>
-
-            <Link
-              to="/dashboard/withdraw"
-              className="px-4 py-2 text-sm border"
-              style={{
-                borderColor: "rgba(212,160,23,0.2)",
-              }}
-            >
-              Withdraw
-            </Link>
-
-            <Link
-              to="/dashboard/profile"
-              className="px-4 py-2 text-sm border"
-              style={{
-                borderColor: "rgba(212,160,23,0.2)",
-              }}
-            >
-              Profile
-            </Link>
-
-          </div>
-        </nav>
-
-        {/* TITLE */}
-
-        <div className="mb-8">
-          <h1 className="text-3xl lg:text-4xl font-black">
-            Dashboard
-          </h1>
-
-          <p
-            className="mt-2 text-sm"
-            style={{ color: "#9090a8" }}
-          >
-            Welcome back. Here's your account overview.
-          </p>
-        </div>
-
-        {/* WALLET / OVERVIEW CARDS */}
-
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-5">
-
-          <StatCard
-            title="Available Balance"
-            value={money(wallet?.available_balance)}
-          />
-
-          <StatCard
-            title="Invested Balance"
-            value={money(calculatedInvestedBalance)}
-          />
-
-          <StatCard
-            title="Total Profit"
-            value={money(calculatedTotalProfit)}
-            gold
-          />
-
-          <StatCard
-            title="Active Investments"
-            value={String(activeInvestments.length)}
-          />
+            View all →
+          </Link>
 
         </div>
 
-        {/* QUICK ACTIONS */}
-
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-8">
-
-          <ActionButton
-            to="/dashboard/deposit"
-            title="Deposit"
-            description="Fund your wallet"
-          />
-
-          <ActionButton
-            to="/dashboard/plans"
-            title="Invest"
-            description="Choose an investment plan"
-          />
-
-          <ActionButton
-            to="/dashboard/withdraw"
-            title="Withdraw"
-            description="Request a withdrawal"
-          />
-
-        </div>
-
-        {/* INVESTMENTS */}
-
-        <section className="mt-10">
-
-          <div className="flex items-center justify-between mb-5">
-
-            <div>
-              <h2 className="text-xl font-bold">
-                Your Investments
-              </h2>
-
-              <p
-                className="text-sm mt-1"
-                style={{ color: "#9090a8" }}
-              >
-                Your current investment positions.
-              </p>
-            </div>
-
-            <Link
-              to="/dashboard/investments"
-              className="text-sm"
-              style={{ color: "#d4a017" }}
-            >
-              View all →
-            </Link>
-
-          </div>
-
-          {investments.length === 0 ? (
-
-            <div
-              className="p-8 border"
-              style={{
-                background: "#111118",
-                borderColor: "rgba(212,160,23,0.15)",
-              }}
-            >
-              <p className="font-semibold">
-                No investments yet
-              </p>
-
-              <p
-                className="text-sm mt-2"
-                style={{ color: "#9090a8" }}
-              >
-                Choose an available investment plan when
-                you're ready.
-              </p>
-
-              <Link
-                to="/dashboard/plans"
-                className="inline-block mt-5 px-5 py-3 text-sm font-bold"
-                style={{
-                  background: "#d4a017",
-                  color: "#09090e",
-                }}
-              >
-                View Investment Plans
-              </Link>
-            </div>
-
-          ) : (
-
-            <div className="space-y-4">
-
-              {investments.slice(0, 3).map((investment) => (
-
-                <div
-                  key={investment.id}
-                  className="p-6 border"
-                  style={{
-                    background: "#111118",
-                    borderColor: "rgba(212,160,23,0.15)",
-                  }}
-                >
-
-                  <div className="grid grid-cols-2 md:grid-cols-5 gap-5">
-
-                    <div>
-                      <p
-                        className="text-xs"
-                        style={{ color: "#9090a8" }}
-                      >
-                        Investment
-                      </p>
-
-                      <p className="text-xl font-bold mt-1">
-                        {money(investment.principal)}
-                      </p>
-                    </div>
-
-                    <div>
-                      <p
-                        className="text-xs"
-                        style={{ color: "#9090a8" }}
-                      >
-                        Daily Rate
-                      </p>
-
-                      <p className="font-semibold mt-1">
-                        {Number(investment.daily_rate).toFixed(2)}%
-                      </p>
-                    </div>
-
-                    <div>
-                      <p
-                        className="text-xs"
-                        style={{ color: "#9090a8" }}
-                      >
-                        Accrued Profit
-                      </p>
-
-                      <p
-                        className="font-semibold mt-1"
-                        style={{ color: "#d4a017" }}
-                      >
-                        {money(investment.accrued_profit)}
-                      </p>
-                    </div>
-
-                    <div>
-                      <p
-                        className="text-xs"
-                        style={{ color: "#9090a8" }}
-                      >
-                        Maturity
-                      </p>
-
-                      <p className="font-semibold mt-1">
-                        {formatDate(investment.maturity_date)}
-                      </p>
-                    </div>
-
-                    <div>
-                      <p
-                        className="text-xs"
-                        style={{ color: "#9090a8" }}
-                      >
-                        Status
-                      </p>
-
-                      <span
-                        className="inline-block mt-2 px-3 py-1 text-xs font-semibold"
-                        style={{
-                          background:
-                            investment.status?.toUpperCase() === "ACTIVE"
-                              ? "rgba(50,180,100,0.1)"
-                              : "rgba(212,160,23,0.1)",
-                          color:
-                            investment.status?.toUpperCase() === "ACTIVE"
-                              ? "#5dcc8a"
-                              : "#d4a017",
-                        }}
-                      >
-                        {investment.status}
-                      </span>
-                    </div>
-
-                  </div>
-
-                </div>
-
-              ))}
-
-            </div>
-
-          )}
-
-        </section>
-
-        {/* TRANSACTIONS */}
-
-        <section className="mt-10">
-
-          <div className="flex items-center justify-between mb-5">
-
-            <div>
-              <h2 className="text-xl font-bold">
-                Recent Transactions
-              </h2>
-
-              <p
-                className="text-sm mt-1"
-                style={{ color: "#9090a8" }}
-              >
-                Your latest account activity.
-              </p>
-            </div>
-
-            <Link
-              to="/dashboard/transactions"
-              className="text-sm"
-              style={{ color: "#d4a017" }}
-            >
-              View all →
-            </Link>
-
-          </div>
+        {investments.length === 0 ? (
 
           <div
-            className="border overflow-hidden"
+            className="p-8 border"
             style={{
               background: "#111118",
               borderColor: "rgba(212,160,23,0.15)",
             }}
           >
+            <p className="font-semibold">
+              No investments yet
+            </p>
 
-            {transactions.length === 0 ? (
+            <p
+              className="text-sm mt-2"
+              style={{ color: "#9090a8" }}
+            >
+              Choose an available investment plan when
+              you're ready.
+            </p>
+
+            <Link
+              to="/dashboard/plans"
+              className="inline-block mt-5 px-5 py-3 text-sm font-bold"
+              style={{
+                background: "#d4a017",
+                color: "#09090e",
+              }}
+            >
+              View Investment Plans
+            </Link>
+          </div>
+
+        ) : (
+
+          <div className="space-y-4">
+
+            {investments.slice(0, 3).map((investment) => (
 
               <div
-                className="p-8 text-center"
-                style={{ color: "#9090a8" }}
+                key={investment.id}
+                className="p-6 border"
+                style={{
+                  background: "#111118",
+                  borderColor: "rgba(212,160,23,0.15)",
+                }}
               >
-                No transactions yet.
+
+                <div className="grid grid-cols-2 md:grid-cols-5 gap-5">
+
+                  <div>
+                    <p
+                      className="text-xs"
+                      style={{ color: "#9090a8" }}
+                    >
+                      Investment
+                    </p>
+
+                    <p className="text-xl font-bold mt-1">
+                      {money(investment.principal)}
+                    </p>
+                  </div>
+
+                  <div>
+                    <p
+                      className="text-xs"
+                      style={{ color: "#9090a8" }}
+                    >
+                      Daily Rate
+                    </p>
+
+                    <p className="font-semibold mt-1">
+                      {Number(investment.daily_rate).toFixed(2)}%
+                    </p>
+                  </div>
+
+                  <div>
+                    <p
+                      className="text-xs"
+                      style={{ color: "#9090a8" }}
+                    >
+                      Accrued Profit
+                    </p>
+
+                    <p
+                      className="font-semibold mt-1"
+                      style={{ color: "#d4a017" }}
+                    >
+                      {money(investment.accrued_profit)}
+                    </p>
+                  </div>
+
+                  <div>
+                    <p
+                      className="text-xs"
+                      style={{ color: "#9090a8" }}
+                    >
+                      Maturity
+                    </p>
+
+                    <p className="font-semibold mt-1">
+                      {formatDate(investment.maturity_date)}
+                    </p>
+                  </div>
+
+                  <div>
+                    <p
+                      className="text-xs"
+                      style={{ color: "#9090a8" }}
+                    >
+                      Status
+                    </p>
+
+                    <span
+                      className="inline-block mt-2 px-3 py-1 text-xs font-semibold"
+                      style={{
+                        background:
+                          investment.status?.toUpperCase() === "ACTIVE"
+                            ? "rgba(50,180,100,0.1)"
+                            : "rgba(212,160,23,0.1)",
+                        color:
+                          investment.status?.toUpperCase() === "ACTIVE"
+                            ? "#5dcc8a"
+                            : "#d4a017",
+                      }}
+                    >
+                      {investment.status}
+                    </span>
+                  </div>
+
+                </div>
+
               </div>
 
-            ) : (
-
-              <div className="overflow-x-auto">
-
-                <table className="w-full text-sm">
-
-                  <thead
-                    style={{
-                      background: "rgba(255,255,255,0.02)",
-                    }}
-                  >
-                    <tr>
-
-                      <th className="text-left p-4">
-                        Type
-                      </th>
-
-                      <th className="text-left p-4">
-                        Amount
-                      </th>
-
-                      <th className="text-left p-4">
-                        Status
-                      </th>
-
-                      <th className="text-left p-4">
-                        Date
-                      </th>
-
-                    </tr>
-                  </thead>
-
-                  <tbody>
-
-                    {transactions.map((transaction) => (
-
-                      <tr
-                        key={transaction.id}
-                        className="border-t"
-                        style={{
-                          borderColor:
-                            "rgba(255,255,255,0.05)",
-                        }}
-                      >
-
-                        <td className="p-4 font-semibold">
-                          {transaction.type}
-                        </td>
-
-                        <td className="p-4">
-                          {money(transaction.amount)}
-                        </td>
-
-                        <td className="p-4">
-                          {transaction.status}
-                        </td>
-
-                        <td
-                          className="p-4"
-                          style={{
-                            color: "#9090a8",
-                          }}
-                        >
-                          {formatDate(transaction.created_at)}
-                        </td>
-
-                      </tr>
-
-                    ))}
-
-                  </tbody>
-
-                </table>
-
-              </div>
-
-            )}
+            ))}
 
           </div>
 
-        </section>
+        )}
 
-      </div>
+      </section>
+
+      {/* TRANSACTIONS */}
+
+      <section className="mt-10">
+
+        <div className="flex items-center justify-between mb-5">
+
+          <div>
+            <h2 className="text-xl font-bold">
+              Recent Transactions
+            </h2>
+
+            <p
+              className="text-sm mt-1"
+              style={{ color: "#9090a8" }}
+            >
+              Your latest account activity.
+            </p>
+          </div>
+
+          <Link
+            to="/dashboard/transactions"
+            className="text-sm"
+            style={{ color: "#d4a017" }}
+          >
+            View all →
+          </Link>
+
+        </div>
+
+        <div
+          className="border overflow-hidden"
+          style={{
+            background: "#111118",
+            borderColor: "rgba(212,160,23,0.15)",
+          }}
+        >
+
+          {transactions.length === 0 ? (
+
+            <div
+              className="p-8 text-center"
+              style={{ color: "#9090a8" }}
+            >
+              No transactions yet.
+            </div>
+
+          ) : (
+
+            <div className="overflow-x-auto">
+
+              <table className="w-full min-w-[520px] text-sm">
+
+                <thead
+                  style={{
+                    background: "rgba(255,255,255,0.02)",
+                  }}
+                >
+                  <tr>
+
+                    <th className="text-left p-4">
+                      Type
+                    </th>
+
+                    <th className="text-left p-4">
+                      Amount
+                    </th>
+
+                    <th className="text-left p-4">
+                      Status
+                    </th>
+
+                    <th className="text-left p-4">
+                      Date
+                    </th>
+
+                  </tr>
+                </thead>
+
+                <tbody>
+
+                  {transactions.map((transaction) => (
+
+                    <tr
+                      key={transaction.id}
+                      className="border-t"
+                      style={{
+                        borderColor:
+                          "rgba(255,255,255,0.05)",
+                      }}
+                    >
+
+                      <td className="p-4 font-semibold">
+                        {transaction.type}
+                      </td>
+
+                      <td className="p-4">
+                        {money(transaction.amount)}
+                      </td>
+
+                      <td className="p-4">
+                        {transaction.status}
+                      </td>
+
+                      <td
+                        className="p-4"
+                        style={{
+                          color: "#9090a8",
+                        }}
+                      >
+                        {formatDate(transaction.created_at)}
+                      </td>
+
+                    </tr>
+
+                  ))}
+
+                </tbody>
+
+              </table>
+
+            </div>
+
+          )}
+
+        </div>
+
+      </section>
+
     </div>
   );
 }
