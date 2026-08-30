@@ -5,7 +5,7 @@ const stats = [
   { label: "Minimum Investment", value: "$1,000", mono: true },
   { label: "Stated Daily Rate", value: "2.0%", mono: true },
   { label: "Investment Plans", value: "4", mono: true },
-  { label: "Founded", value: "2019", mono: true },
+  { label: "Founded", value: "2017", mono: true },
 ];
 
 const planPreview = [
