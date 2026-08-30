@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Link, useNavigate } from "react-router";
+import { Link } from "react-router";
 import { supabase } from "../../lib/supabase";
 
 type Wallet = {
@@ -13,287 +13,285 @@ type Investment = {
   principal: number;
   daily_rate: number;
   accrued_profit: number;
+  status: string;
   start_date: string;
-  maturity_date: string;
-  status: string;
-};
-
-type Transaction = {
-  id: string;
-  type: string;
-  amount: number;
-  status: string;
-  created_at: string;
+  maturity_date: string | null;
 };
 
 export default function Dashboard() {
-  const navigate = useNavigate();
-
   const [wallet, setWallet] = useState<Wallet | null>(null);
   const [investments, setInvestments] = useState<Investment[]>([]);
-  const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [firstName, setFirstName] = useState("User");
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
 
   useEffect(() => {
     loadDashboard();
   }, []);
 
   async function loadDashboard() {
-    setLoading(true);
-    setError("");
-
     try {
       const {
         data: { user },
-        error: userError,
       } = await supabase.auth.getUser();
 
-      if (userError || !user) {
-        navigate("/login", { replace: true });
-        return;
+      if (!user) return;
+
+      const [profileResult, walletResult, investmentsResult] =
+        await Promise.all([
+          supabase
+            .from("profiles")
+            .select("first_name")
+            .eq("id", user.id)
+            .maybeSingle(),
+
+          supabase
+            .from("wallets")
+            .select(
+              "available_balance, invested_balance, total_profit"
+            )
+            .eq("user_id", user.id)
+            .maybeSingle(),
+
+          supabase
+            .from("investments")
+            .select(
+              "id, principal, daily_rate, accrued_profit, status, start_date, maturity_date"
+            )
+            .eq("user_id", user.id)
+            .eq("status", "ACTIVE")
+            .order("created_at", {
+              ascending: false,
+            }),
+        ]);
+
+      if (profileResult.data?.first_name) {
+        setFirstName(profileResult.data.first_name);
       }
 
-      /*
-       * WALLET
-       */
-      const { data: walletData, error: walletError } = await supabase
-        .from("wallets")
-        .select(
-          "available_balance, invested_balance, total_profit"
-        )
-        .eq("user_id", user.id)
-        .single();
+      setWallet(
+        walletResult.data ?? {
+          available_balance: 0,
+          invested_balance: 0,
+          total_profit: 0,
+        }
+      );
 
-      if (walletError) {
-        console.error("Wallet error:", walletError);
-      } else {
-        setWallet(walletData);
-      }
-
-      /*
-       * INVESTMENTS
-       *
-       * IMPORTANT:
-       * Database uses "principal", NOT "amount".
-       */
-      const { data: investmentData, error: investmentError } =
-        await supabase
-          .from("investments")
-          .select(
-            `
-              id,
-              principal,
-              daily_rate,
-              accrued_profit,
-              start_date,
-              maturity_date,
-              status
-            `
-          )
-          .eq("user_id", user.id)
-          .order("created_at", { ascending: false });
-
-      if (investmentError) {
-        console.error("Investment error:", investmentError);
-        setInvestments([]);
-      } else {
-        setInvestments(investmentData ?? []);
-      }
-
-      /*
-       * TRANSACTIONS
-       */
-      const { data: transactionData, error: transactionError } =
-        await supabase
-          .from("transactions")
-          .select(
-            "id, type, amount, status, created_at"
-          )
-          .eq("user_id", user.id)
-          .order("created_at", { ascending: false })
-          .limit(5);
-
-      if (transactionError) {
-        console.error("Transaction error:", transactionError);
-      } else {
-        setTransactions(transactionData ?? []);
-      }
-    } catch (err) {
-      console.error("Dashboard error:", err);
-      setError("Unable to load your account data.");
+      setInvestments(
+        (investmentsResult.data ?? []) as Investment[]
+      );
+    } catch (error) {
+      console.error("DASHBOARD ERROR:", error);
     } finally {
       setLoading(false);
     }
   }
 
   function money(value: number | null | undefined) {
-    return `$${Number(value ?? 0).toLocaleString("en-US", {
+    return Number(value ?? 0).toLocaleString(undefined, {
       minimumFractionDigits: 2,
       maximumFractionDigits: 2,
-    })}`;
-  }
-
-  function formatDate(value: string) {
-    if (!value) return "—";
-
-    const date = new Date(value);
-
-    if (Number.isNaN(date.getTime())) {
-      return "—";
-    }
-
-    return date.toLocaleDateString("en-US", {
-      year: "numeric",
-      month: "short",
-      day: "numeric",
     });
   }
 
-  /*
-   * ACTIVE INVESTMENTS
-   *
-   * Handles ACTIVE / active / Active safely.
-   */
-  const activeInvestments = investments.filter(
-    (investment) =>
-      investment.status?.toUpperCase() === "ACTIVE"
-  );
+  function calculateDailyProfit(investment: Investment) {
+    return (
+      Number(investment.principal) *
+      Number(investment.daily_rate) /
+      100
+    );
+  }
 
-  /*
-   * Calculate these directly from investments.
-   *
-   * This means the overview does not depend on
-   * wallets.invested_balance or wallets.total_profit
-   * being manually updated.
-   */
-  const calculatedInvestedBalance = activeInvestments.reduce(
-    (total, investment) =>
-      total + Number(investment.principal ?? 0),
-    0
-  );
+  function formatDate(date: string | null) {
+    if (!date) return "—";
 
-  const calculatedTotalProfit = investments.reduce(
-    (total, investment) =>
-      total + Number(investment.accrued_profit ?? 0),
-    0
-  );
-
-  const totalWalletBalance =
-    Number(wallet?.available_balance ?? 0) +
-    calculatedTotalProfit;
+    return new Date(date).toLocaleDateString(undefined, {
+      day: "numeric",
+      month: "short",
+      year: "numeric",
+    });
+  }
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <p style={{ color: "#9090a8" }}>
-          Loading your account...
+      <div className="min-h-[60vh] flex items-center justify-center">
+        <p
+          className="text-sm"
+          style={{ color: "#777789" }}
+        >
+          Loading your dashboard...
         </p>
       </div>
     );
   }
 
-  if (error) {
-    return (
-      <div className="min-h-screen flex items-center justify-center px-6">
-        <div className="text-center">
-          <p style={{ color: "#e05050" }}>{error}</p>
+  const available = Number(
+    wallet?.available_balance ?? 0
+  );
 
-          <button
-            onClick={loadDashboard}
-            className="mt-4 px-6 py-3 font-semibold"
-            style={{
-              background: "#d4a017",
-              color: "#09090e",
-            }}
-          >
-            Try again
-          </button>
-        </div>
-      </div>
-    );
-  }
+  const invested = Number(
+    wallet?.invested_balance ?? 0
+  );
+
+  const profit = Number(
+    wallet?.total_profit ?? 0
+  );
+
+  const totalWallet = available + profit;
 
   return (
-    <div className="fade-up">
-      <div className="mb-8">
-        <h1 className="text-3xl lg:text-4xl font-black">
-          Dashboard
+    <div className="space-y-8">
+
+      {/* =====================================================
+          WELCOME
+      ===================================================== */}
+
+      <section>
+        <p
+          className="text-xs uppercase tracking-[0.25em] font-bold"
+          style={{ color: "#d4a017" }}
+        >
+          Member Dashboard
+        </p>
+
+        <h1 className="mt-2 text-3xl sm:text-4xl font-black">
+          Welcome back, {firstName} 👋
         </h1>
 
         <p
           className="mt-2 text-sm"
           style={{ color: "#9090a8" }}
         >
-          Welcome back. Here's your account overview.
+          Here's a simple overview of your account.
         </p>
-      </div>
+      </section>
 
-      {/* WALLET / OVERVIEW CARDS */}
+      {/* =====================================================
+          TOTAL WALLET
+      ===================================================== */}
 
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4 xl:grid-cols-4">
-
-        <StatCard
-          title="Total Wallet Balance"
-          value={money(totalWalletBalance)}
-          gold
+      <section
+        className="relative overflow-hidden p-6 sm:p-8 border"
+        style={{
+          background:
+            "linear-gradient(135deg, #15151d 0%, #101016 100%)",
+          borderColor: "rgba(212,160,23,0.25)",
+        }}
+      >
+        <div
+          className="absolute -right-16 -top-16 w-48 h-48 rounded-full"
+          style={{
+            background:
+              "rgba(212,160,23,0.07)",
+          }}
         />
 
-        <StatCard
-          title="Available Balance"
-          value={money(wallet?.available_balance)}
-        />
+        <div className="relative">
 
-        <StatCard
-          title="Invested Balance"
-          value={money(calculatedInvestedBalance)}
-        />
+          <p
+            className="text-xs uppercase tracking-widest font-bold"
+            style={{ color: "#9090a8" }}
+          >
+            Total Wallet Balance
+          </p>
 
-        <StatCard
-          title="Total Profit"
-          value={money(calculatedTotalProfit)}
-        />
+          <div className="mt-3 flex items-end gap-3">
+            <span className="text-4xl sm:text-5xl font-black">
+              ${money(totalWallet)}
+            </span>
+          </div>
 
-      </div>
+          <p
+            className="mt-3 text-sm"
+            style={{ color: "#777789" }}
+          >
+            Available balance + accrued profit
+          </p>
 
-      {/* QUICK ACTIONS */}
+          <div className="mt-7 grid grid-cols-1 sm:grid-cols-3 gap-4">
 
-      <div className="mt-8 grid grid-cols-1 gap-3 sm:grid-cols-3 sm:gap-4">
+            <BalanceItem
+              label="Available"
+              value={`$${money(available)} `}
+            />
 
-        <ActionButton
-          to="/dashboard/deposit"
-          title="Deposit"
-          description="Fund your wallet"
-        />
+            <BalanceItem
+              label="Invested"
+              value={`$${money(invested)} `}
+            />
 
-        <ActionButton
-          to="/dashboard/plans"
-          title="Invest"
-          description="Choose an investment plan"
-        />
+            <BalanceItem
+              label="Total Profit"
+              value={`$${money(profit)} `}
+              positive
+            />
 
-        <ActionButton
-          to="/dashboard/withdraw"
-          title="Withdraw"
-          description="Request a withdrawal"
-        />
+          </div>
 
-      </div>
+        </div>
+      </section>
 
-      {/* INVESTMENTS */}
+      {/* =====================================================
+          QUICK ACTIONS
+      ===================================================== */}
 
-      <section className="mt-10">
+      <section>
 
-        <div className="flex items-center justify-between mb-5">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-xl font-black">
+            Quick Actions
+          </h2>
+        </div>
+
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+
+          <QuickAction
+            to="/dashboard/deposit"
+            icon="+"
+            title="Deposit"
+            description="Add funds"
+          />
+
+          <QuickAction
+            to="/dashboard/withdraw"
+            icon="↓"
+            title="Withdraw"
+            description="Request funds"
+          />
+
+          <QuickAction
+            to="/dashboard/plans"
+            icon="▣"
+            title="Invest"
+            description="View plans"
+          />
+
+          <QuickAction
+            to="/dashboard/transactions"
+            icon="≡"
+            title="Activity"
+            description="View history"
+          />
+
+        </div>
+
+      </section>
+
+      {/* =====================================================
+          ACTIVE INVESTMENTS
+      ===================================================== */}
+
+      <section>
+
+        <div className="flex items-center justify-between mb-4">
 
           <div>
-            <h2 className="text-xl font-bold">
-              Your Investments
+            <h2 className="text-xl font-black">
+              Active Investments
             </h2>
 
             <p
               className="text-sm mt-1"
-              style={{ color: "#9090a8" }}
+              style={{ color: "#777789" }}
             >
               Your current investment positions.
             </p>
@@ -301,279 +299,231 @@ export default function Dashboard() {
 
           <Link
             to="/dashboard/investments"
-            className="text-sm"
+            className="text-sm font-bold"
             style={{ color: "#d4a017" }}
           >
-            View all →
+            View all
           </Link>
 
         </div>
 
         {investments.length === 0 ? (
-
           <div
-            className="p-8 border"
+            className="p-8 border text-center"
             style={{
               background: "#111118",
-              borderColor: "rgba(212,160,23,0.15)",
+              borderColor:
+                "rgba(255,255,255,0.08)",
             }}
           >
-            <p className="font-semibold">
-              No investments yet
-            </p>
+            <div
+              className="mx-auto w-12 h-12 flex items-center justify-center text-xl"
+              style={{
+                background:
+                  "rgba(212,160,23,0.08)",
+                color: "#d4a017",
+              }}
+            >
+              ▣
+            </div>
+
+            <h3 className="mt-4 font-bold">
+              No active investments
+            </h3>
 
             <p
-              className="text-sm mt-2"
-              style={{ color: "#9090a8" }}
+              className="mt-2 text-sm"
+              style={{ color: "#777789" }}
             >
-              Choose an available investment plan when
-              you're ready.
+              Explore our investment plans to get started.
             </p>
 
             <Link
               to="/dashboard/plans"
-              className="inline-block mt-5 px-5 py-3 text-sm font-bold"
+              className="inline-block mt-5 px-6 py-3 text-sm font-bold"
               style={{
                 background: "#d4a017",
                 color: "#09090e",
               }}
             >
-              View Investment Plans
+              Explore Plans
             </Link>
           </div>
-
         ) : (
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
 
-          <div className="space-y-4">
+            {investments.slice(0, 4).map((investment) => {
 
-            {investments.slice(0, 3).map((investment) => (
+              const dailyProfit =
+                calculateDailyProfit(investment);
 
-              <div
-                key={investment.id}
-                className="p-6 border"
-                style={{
-                  background: "#111118",
-                  borderColor: "rgba(212,160,23,0.15)",
-                }}
-              >
+              return (
+                <div
+                  key={investment.id}
+                  className="p-6 border"
+                  style={{
+                    background: "#111118",
+                    borderColor:
+                      "rgba(255,255,255,0.08)",
+                  }}
+                >
 
-                <div className="grid grid-cols-2 md:grid-cols-5 gap-5">
+                  <div className="flex items-start justify-between gap-4">
 
-                  <div>
-                    <p
-                      className="text-xs"
-                      style={{ color: "#9090a8" }}
-                    >
-                      Investment
-                    </p>
+                    <div>
+                      <p
+                        className="text-xs uppercase tracking-widest font-bold"
+                        style={{
+                          color: "#d4a017",
+                        }}
+                      >
+                        Active Investment
+                      </p>
 
-                    <p className="text-xl font-bold mt-1">
-                      {money(investment.principal)}
-                    </p>
-                  </div>
-
-                  <div>
-                    <p
-                      className="text-xs"
-                      style={{ color: "#9090a8" }}
-                    >
-                      Daily Rate
-                    </p>
-
-                    <p className="font-semibold mt-1">
-                      {Number(investment.daily_rate).toFixed(2)}%
-                    </p>
-                  </div>
-
-                  <div>
-                    <p
-                      className="text-xs"
-                      style={{ color: "#9090a8" }}
-                    >
-                      Accrued Profit
-                    </p>
-
-                    <p
-                      className="font-semibold mt-1"
-                      style={{ color: "#d4a017" }}
-                    >
-                      {money(investment.accrued_profit)}
-                    </p>
-                  </div>
-
-                  <div>
-                    <p
-                      className="text-xs"
-                      style={{ color: "#9090a8" }}
-                    >
-                      Maturity
-                    </p>
-
-                    <p className="font-semibold mt-1">
-                      {formatDate(investment.maturity_date)}
-                    </p>
-                  </div>
-
-                  <div>
-                    <p
-                      className="text-xs"
-                      style={{ color: "#9090a8" }}
-                    >
-                      Status
-                    </p>
+                      <h3 className="mt-2 text-xl font-black">
+                        ${money(investment.principal)}
+                      </h3>
+                    </div>
 
                     <span
-                      className="inline-block mt-2 px-3 py-1 text-xs font-semibold"
+                      className="px-3 py-1 text-xs font-bold"
                       style={{
+                        color: "#71d69a",
                         background:
-                          investment.status?.toUpperCase() === "ACTIVE"
-                            ? "rgba(50,180,100,0.1)"
-                            : "rgba(212,160,23,0.1)",
-                        color:
-                          investment.status?.toUpperCase() === "ACTIVE"
-                            ? "#5dcc8a"
-                            : "#d4a017",
+                          "rgba(50,180,100,0.08)",
                       }}
                     >
-                      {investment.status}
+                      ACTIVE
                     </span>
+
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4 mt-6">
+
+                    <div>
+                      <p
+                        className="text-xs"
+                        style={{ color: "#777789" }}
+                      >
+                        Daily Rate
+                      </p>
+
+                      <p className="mt-1 font-bold">
+                        {Number(
+                          investment.daily_rate
+                        ).toFixed(2)}
+                        %
+                      </p>
+                    </div>
+
+                    <div>
+                      <p
+                        className="text-xs"
+                        style={{ color: "#777789" }}
+                      >
+                        Today's Profit
+                      </p>
+
+                      <p
+                        className="mt-1 font-bold"
+                        style={{ color: "#71d69a" }}
+                      >
+                        +${money(dailyProfit)}
+                      </p>
+                    </div>
+
+                    <div>
+                      <p
+                        className="text-xs"
+                        style={{ color: "#777789" }}
+                      >
+                        Accrued Profit
+                      </p>
+
+                      <p className="mt-1 font-bold">
+                        ${money(
+                          investment.accrued_profit
+                        )}
+                      </p>
+                    </div>
+
+                    <div>
+                      <p
+                        className="text-xs"
+                        style={{ color: "#777789" }}
+                      >
+                        Started
+                      </p>
+
+                      <p className="mt-1 font-bold">
+                        {formatDate(
+                          investment.start_date
+                        )}
+                      </p>
+                    </div>
+
                   </div>
 
                 </div>
-
-              </div>
-
-            ))}
+              );
+            })}
 
           </div>
-
         )}
 
       </section>
 
-      {/* TRANSACTIONS */}
+      {/* =====================================================
+          GET STARTED
+      ===================================================== */}
 
-      <section className="mt-10">
+      <section
+        className="p-6 sm:p-8 border"
+        style={{
+          background:
+            "rgba(212,160,23,0.04)",
+          borderColor:
+            "rgba(212,160,23,0.15)",
+        }}
+      >
 
-        <div className="flex items-center justify-between mb-5">
+        <h2 className="text-xl font-black">
+          Manage your account
+        </h2>
 
-          <div>
-            <h2 className="text-xl font-bold">
-              Recent Transactions
-            </h2>
+        <p
+          className="mt-2 text-sm max-w-2xl"
+          style={{ color: "#9090a8" }}
+        >
+          Everything you need is available from your dashboard.
+          Fund your wallet, choose an investment plan, monitor
+          your investments and keep track of your activity.
+        </p>
 
-            <p
-              className="text-sm mt-1"
-              style={{ color: "#9090a8" }}
-            >
-              Your latest account activity.
-            </p>
-          </div>
+        <div className="flex flex-wrap gap-3 mt-6">
 
           <Link
-            to="/dashboard/transactions"
-            className="text-sm"
-            style={{ color: "#d4a017" }}
+            to="/dashboard/deposit"
+            className="px-6 py-3 text-sm font-bold"
+            style={{
+              background: "#d4a017",
+              color: "#09090e",
+            }}
           >
-            View all →
+            Deposit Funds
           </Link>
 
-        </div>
-
-        <div
-          className="border overflow-hidden"
-          style={{
-            background: "#111118",
-            borderColor: "rgba(212,160,23,0.15)",
-          }}
-        >
-
-          {transactions.length === 0 ? (
-
-            <div
-              className="p-8 text-center"
-              style={{ color: "#9090a8" }}
-            >
-              No transactions yet.
-            </div>
-
-          ) : (
-
-            <div className="overflow-x-auto">
-
-              <table className="w-full min-w-[520px] text-sm">
-
-                <thead
-                  style={{
-                    background: "rgba(255,255,255,0.02)",
-                  }}
-                >
-                  <tr>
-
-                    <th className="text-left p-4">
-                      Type
-                    </th>
-
-                    <th className="text-left p-4">
-                      Amount
-                    </th>
-
-                    <th className="text-left p-4">
-                      Status
-                    </th>
-
-                    <th className="text-left p-4">
-                      Date
-                    </th>
-
-                  </tr>
-                </thead>
-
-                <tbody>
-
-                  {transactions.map((transaction) => (
-
-                    <tr
-                      key={transaction.id}
-                      className="border-t"
-                      style={{
-                        borderColor:
-                          "rgba(255,255,255,0.05)",
-                      }}
-                    >
-
-                      <td className="p-4 font-semibold">
-                        {transaction.type}
-                      </td>
-
-                      <td className="p-4">
-                        {money(transaction.amount)}
-                      </td>
-
-                      <td className="p-4">
-                        {transaction.status}
-                      </td>
-
-                      <td
-                        className="p-4"
-                        style={{
-                          color: "#9090a8",
-                        }}
-                      >
-                        {formatDate(transaction.created_at)}
-                      </td>
-
-                    </tr>
-
-                  ))}
-
-                </tbody>
-
-              </table>
-
-            </div>
-
-          )}
+          <Link
+            to="/dashboard/plans"
+            className="px-6 py-3 text-sm font-bold border"
+            style={{
+              borderColor:
+                "rgba(212,160,23,0.25)",
+              color: "#d4a017",
+            }}
+          >
+            View Investment Plans
+          </Link>
 
         </div>
 
@@ -584,81 +534,93 @@ export default function Dashboard() {
 }
 
 
-/*
- * STAT CARD
- */
+/* ============================================================
+   SMALL COMPONENTS
+============================================================ */
 
-function StatCard({
-  title,
+function BalanceItem({
+  label,
   value,
-  gold = false,
+  positive = false,
 }: {
-  title: string;
+  label: string;
   value: string;
-  gold?: boolean;
+  positive?: boolean;
 }) {
   return (
     <div
-      className="p-6 border"
+      className="p-4 border"
       style={{
-        background: "#111118",
-        borderColor: "rgba(212,160,23,0.15)",
+        background:
+          "rgba(255,255,255,0.025)",
+        borderColor:
+          "rgba(255,255,255,0.06)",
       }}
     >
-
       <p
-        className="text-sm"
-        style={{ color: "#9090a8" }}
+        className="text-xs"
+        style={{ color: "#777789" }}
       >
-        {title}
+        {label}
       </p>
 
       <p
-        className="text-2xl font-black mt-3"
-        style={gold ? { color: "#d4a017" } : undefined}
+        className="mt-2 font-bold"
+        style={{
+          color: positive
+            ? "#71d69a"
+            : "#f5f0e8",
+        }}
       >
         {value}
       </p>
-
     </div>
   );
 }
 
 
-/*
- * ACTION BUTTON
- */
-
-function ActionButton({
+function QuickAction({
   to,
+  icon,
   title,
   description,
 }: {
   to: string;
+  icon: string;
   title: string;
   description: string;
 }) {
   return (
     <Link
       to={to}
-      className="block p-5 border transition-all"
+      className="p-5 border transition-transform hover:-translate-y-0.5"
       style={{
         background: "#111118",
-        borderColor: "rgba(212,160,23,0.15)",
+        borderColor:
+          "rgba(255,255,255,0.08)",
       }}
     >
+      <div
+        className="w-10 h-10 flex items-center justify-center text-lg font-black"
+        style={{
+          background:
+            "rgba(212,160,23,0.08)",
+          color: "#d4a017",
+        }}
+      >
+        {icon}
+      </div>
 
-      <p className="font-bold">
+      <p className="mt-4 font-bold">
         {title}
       </p>
 
       <p
-        className="text-xs mt-1"
-        style={{ color: "#9090a8" }}
+        className="mt-1 text-xs"
+        style={{ color: "#777789" }}
       >
         {description}
       </p>
-
     </Link>
   );
 }
