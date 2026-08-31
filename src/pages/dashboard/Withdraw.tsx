@@ -549,7 +549,7 @@ export default function Withdraw() {
                 onChange={(e) =>
                   setBankName(e.target.value)
                 }
-                placeholder="Enter Bank Nmae"
+                placeholder="Enter Bank Name"
                 className="w-full px-4 py-4 bg-transparent border outline-none"
                 style={{
                   color: "#f5f0e8",
