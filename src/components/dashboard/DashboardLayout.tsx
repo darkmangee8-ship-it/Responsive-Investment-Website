@@ -642,11 +642,6 @@ export default function DashboardLayout() {
             icon: <UserIcon />,
         },
         {
-            label: "Settings",
-            to: "/dashboard/settings",
-            icon: <SettingsIcon />,
-        },
-        {
             label: "Support",
             to: "/dashboard/support",
             icon: <HeadphoneIcon />,
