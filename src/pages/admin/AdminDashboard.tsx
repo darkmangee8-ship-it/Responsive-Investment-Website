@@ -12,10 +12,19 @@ import {
   CircleDollarSign,
   Activity,
   X,
+  Headphones,
+  Trash2,
+  MessageSquare,
+  CheckCircle,
+  Clock,
+  AlertTriangle,
 } from "lucide-react";
 import { supabase } from "../../lib/supabase";
 
-type AccountStatus = "ACTIVE" | "SUSPENDED" | "DISABLED";
+type AccountStatus =
+  | "ACTIVE"
+  | "SUSPENDED"
+  | "DISABLED";
 
 type User = {
   id: string;
@@ -87,6 +96,22 @@ type Notification = {
   user_email?: string | null;
 };
 
+type SupportRequest = {
+  id: string;
+  user_id: string;
+  user_name: string | null;
+  user_email: string | null;
+  subject: string;
+  message: string;
+  status:
+  | "OPEN"
+  | "IN_PROGRESS"
+  | "RESOLVED";
+  admin_reply: string | null;
+  created_at: string;
+  replied_at: string | null;
+};
+
 type Stats = {
   total_users: number;
   active_users: number;
@@ -110,6 +135,7 @@ type Section =
   | "deposits"
   | "withdrawals"
   | "notifications"
+  | "support"
   | "audit";
 
 export default function AdminDashboard() {
@@ -119,16 +145,35 @@ export default function AdminDashboard() {
   const [deposits, setDeposits] = useState<Deposit[]>([]);
   const [withdrawals, setWithdrawals] = useState<Withdrawal[]>([]);
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
-  const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [notifications, setNotifications] =
+    useState<Notification[]>([]);
+  const [supportRequests, setSupportRequests] =
+    useState<SupportRequest[]>([]);
   const [stats, setStats] = useState<Stats | null>(null);
 
-  const [onlineUsers, setOnlineUsers] = useState<OnlinePresence[]>([]);
+  const [onlineUsers, setOnlineUsers] =
+    useState<OnlinePresence[]>([]);
 
-  const [loading, setLoading] = useState(true);
-  const [loadingNotifications, setLoadingNotifications] = useState(false);
+  const [loading, setLoading] =
+    useState(true);
 
-  const [processing, setProcessing] = useState<string | null>(null);
-  const [sendingNotification, setSendingNotification] = useState(false);
+  const [loadingNotifications, setLoadingNotifications] =
+    useState(false);
+
+  const [loadingSupport, setLoadingSupport] =
+    useState(false);
+
+  const [processing, setProcessing] =
+    useState<string | null>(null);
+
+  const [sendingNotification, setSendingNotification] =
+    useState(false);
+
+  const [replyingSupport, setReplyingSupport] =
+    useState(false);
+
+  const [deletingUser, setDeletingUser] =
+    useState(false);
 
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
@@ -136,13 +181,16 @@ export default function AdminDashboard() {
   const [activeSection, setActiveSection] =
     useState<Section>("overview");
 
-  const [search, setSearch] = useState("");
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [search, setSearch] =
+    useState("");
+
+  const [mobileMenuOpen, setMobileMenuOpen] =
+    useState(false);
 
   /*
-   * ============================================================
+   * ==========================================================
    * WALLET ADJUSTMENT
-   * ============================================================
+   * ==========================================================
    */
 
   const [balanceModal, setBalanceModal] =
@@ -158,9 +206,9 @@ export default function AdminDashboard() {
     useState("");
 
   /*
-   * ============================================================
+   * ==========================================================
    * NOTIFICATION FORM
-   * ============================================================
+   * ==========================================================
    */
 
   const [notificationUser, setNotificationUser] =
@@ -173,9 +221,35 @@ export default function AdminDashboard() {
     useState("");
 
   /*
-   * ============================================================
+   * ==========================================================
+   * SUPPORT
+   * ==========================================================
+   */
+
+  const [selectedSupport, setSelectedSupport] =
+    useState<SupportRequest | null>(null);
+
+  const [supportReply, setSupportReply] =
+    useState("");
+
+  const [supportStatus, setSupportStatus] =
+    useState<
+      "OPEN" | "IN_PROGRESS" | "RESOLVED"
+    >("RESOLVED");
+
+  /*
+   * ==========================================================
+   * DELETE USER
+   * ==========================================================
+   */
+
+  const [deleteUserModal, setDeleteUserModal] =
+    useState<User | null>(null);
+
+  /*
+   * ==========================================================
    * ADMIN CHECK
-   * ============================================================
+   * ==========================================================
    */
 
   useEffect(() => {
@@ -196,7 +270,6 @@ export default function AdminDashboard() {
         navigate("/login", {
           replace: true,
         });
-
         return;
       }
 
@@ -211,11 +284,9 @@ export default function AdminDashboard() {
 
       if (profileError) {
         console.error(profileError);
-
         setError(
           "Unable to verify administrator access."
         );
-
         return;
       }
 
@@ -223,14 +294,12 @@ export default function AdminDashboard() {
         setError(
           "You do not have administrator access."
         );
-
         return;
       }
 
       await loadAll();
     } catch (err) {
       console.error(err);
-
       setError(
         "Unable to load administrator dashboard."
       );
@@ -240,9 +309,9 @@ export default function AdminDashboard() {
   }
 
   /*
-   * ============================================================
+   * ==========================================================
    * LOAD EVERYTHING
-   * ============================================================
+   * ==========================================================
    */
 
   async function loadAll() {
@@ -255,14 +324,9 @@ export default function AdminDashboard() {
       loadAuditLogs(),
       loadStats(),
       loadNotifications(),
+      loadSupportRequests(),
     ]);
   }
-
-  /*
-   * ============================================================
-   * USERS
-   * ============================================================
-   */
 
   async function loadUsers() {
     const {
@@ -271,23 +335,13 @@ export default function AdminDashboard() {
     } = await supabase.rpc("admin_get_users");
 
     if (error) {
-      console.error(
-        "USERS ERROR:",
-        error
-      );
-
+      console.error("USERS ERROR:", error);
       setError(error.message);
       return;
     }
 
     setUsers((data ?? []) as User[]);
   }
-
-  /*
-   * ============================================================
-   * DEPOSITS
-   * ============================================================
-   */
 
   async function loadDeposits() {
     const {
@@ -302,19 +356,12 @@ export default function AdminDashboard() {
         "DEPOSITS ERROR:",
         error
       );
-
       setError(error.message);
       return;
     }
 
     setDeposits((data ?? []) as Deposit[]);
   }
-
-  /*
-   * ============================================================
-   * WITHDRAWALS
-   * ============================================================
-   */
 
   async function loadWithdrawals() {
     const {
@@ -329,7 +376,6 @@ export default function AdminDashboard() {
         "WITHDRAWALS ERROR:",
         error
       );
-
       setError(error.message);
       return;
     }
@@ -338,12 +384,6 @@ export default function AdminDashboard() {
       (data ?? []) as Withdrawal[]
     );
   }
-
-  /*
-   * ============================================================
-   * AUDIT
-   * ============================================================
-   */
 
   async function loadAuditLogs() {
     const {
@@ -358,7 +398,6 @@ export default function AdminDashboard() {
         "AUDIT ERROR:",
         error
       );
-
       setError(error.message);
       return;
     }
@@ -367,12 +406,6 @@ export default function AdminDashboard() {
       (data ?? []) as AuditLog[]
     );
   }
-
-  /*
-   * ============================================================
-   * STATISTICS
-   * ============================================================
-   */
 
   async function loadStats() {
     const {
@@ -387,19 +420,12 @@ export default function AdminDashboard() {
         "STATS ERROR:",
         error
       );
-
       setError(error.message);
       return;
     }
 
     setStats(data as Stats);
   }
-
-  /*
-   * ============================================================
-   * NOTIFICATION HISTORY
-   * ============================================================
-   */
 
   async function loadNotifications() {
     setLoadingNotifications(true);
@@ -416,10 +442,8 @@ export default function AdminDashboard() {
         "NOTIFICATIONS ERROR:",
         error
       );
-
       setError(error.message);
       setLoadingNotifications(false);
-
       return;
     }
 
@@ -430,10 +454,37 @@ export default function AdminDashboard() {
     setLoadingNotifications(false);
   }
 
+  async function loadSupportRequests() {
+    setLoadingSupport(true);
+
+    const {
+      data,
+      error,
+    } = await supabase.rpc(
+      "admin_get_support_requests"
+    );
+
+    if (error) {
+      console.error(
+        "SUPPORT ERROR:",
+        error
+      );
+      setError(error.message);
+      setLoadingSupport(false);
+      return;
+    }
+
+    setSupportRequests(
+      (data ?? []) as SupportRequest[]
+    );
+
+    setLoadingSupport(false);
+  }
+
   /*
-   * ============================================================
+   * ==========================================================
    * SEND NOTIFICATION
-   * ============================================================
+   * ==========================================================
    */
 
   async function sendNotification() {
@@ -443,10 +494,7 @@ export default function AdminDashboard() {
     setMessage("");
 
     if (!notificationUser) {
-      setError(
-        "Please select a user."
-      );
-
+      setError("Please select a user.");
       return;
     }
 
@@ -454,7 +502,6 @@ export default function AdminDashboard() {
       setError(
         "Please enter a notification title."
       );
-
       return;
     }
 
@@ -462,7 +509,6 @@ export default function AdminDashboard() {
       setError(
         "Please enter a notification message."
       );
-
       return;
     }
 
@@ -477,10 +523,8 @@ export default function AdminDashboard() {
         {
           p_user_id:
             notificationUser.id,
-
           p_title:
             notificationTitle.trim(),
-
           p_message:
             notificationMessage.trim(),
         }
@@ -491,7 +535,6 @@ export default function AdminDashboard() {
           "SEND NOTIFICATION ERROR:",
           error
         );
-
         setError(error.message);
         return;
       }
@@ -501,7 +544,6 @@ export default function AdminDashboard() {
           data?.message ??
           "Unable to send notification."
         );
-
         return;
       }
 
@@ -517,21 +559,15 @@ export default function AdminDashboard() {
       setNotificationMessage("");
 
       await loadNotifications();
-    } catch (err) {
-      console.error(err);
-
-      setError(
-        "Unable to send notification."
-      );
     } finally {
       setSendingNotification(false);
     }
   }
 
   /*
-   * ============================================================
-   * APPROVE DEPOSIT
-   * ============================================================
+   * ==========================================================
+   * DEPOSITS
+   * ==========================================================
    */
 
   async function approveDeposit(
@@ -544,22 +580,16 @@ export default function AdminDashboard() {
     setMessage("");
 
     try {
-      const {
-        error,
-      } = await supabase.rpc(
-        "approve_deposit",
-        {
-          p_deposit_id:
-            depositId,
-        }
-      );
-
-      if (error) {
-        console.error(
-          "APPROVE DEPOSIT ERROR:",
-          error
+      const { error } =
+        await supabase.rpc(
+          "approve_deposit",
+          {
+            p_deposit_id:
+              depositId,
+          }
         );
 
+      if (error) {
         setError(error.message);
         return;
       }
@@ -574,12 +604,6 @@ export default function AdminDashboard() {
     }
   }
 
-  /*
-   * ============================================================
-   * REJECT DEPOSIT
-   * ============================================================
-   */
-
   async function rejectDeposit(
     depositId: string
   ) {
@@ -590,22 +614,16 @@ export default function AdminDashboard() {
     setMessage("");
 
     try {
-      const {
-        error,
-      } = await supabase.rpc(
-        "reject_deposit",
-        {
-          p_deposit_id:
-            depositId,
-        }
-      );
-
-      if (error) {
-        console.error(
-          "REJECT DEPOSIT ERROR:",
-          error
+      const { error } =
+        await supabase.rpc(
+          "reject_deposit",
+          {
+            p_deposit_id:
+              depositId,
+          }
         );
 
+      if (error) {
         setError(error.message);
         return;
       }
@@ -621,9 +639,9 @@ export default function AdminDashboard() {
   }
 
   /*
-   * ============================================================
-   * APPROVE WITHDRAWAL
-   * ============================================================
+   * ==========================================================
+   * WITHDRAWALS
+   * ==========================================================
    */
 
   async function approveWithdrawal(
@@ -648,22 +666,13 @@ export default function AdminDashboard() {
       );
 
       if (error) {
-        console.error(
-          "APPROVE WITHDRAWAL ERROR:",
-          error
-        );
-
         setError(error.message);
         return;
       }
 
-      const amount = Number(
-        data?.amount ?? 0
-      );
-
       setMessage(
         `Withdrawal of ${formatMoney(
-          amount
+          Number(data?.amount ?? 0)
         )} approved successfully.`
       );
 
@@ -672,12 +681,6 @@ export default function AdminDashboard() {
       setProcessing(null);
     }
   }
-
-  /*
-   * ============================================================
-   * REJECT WITHDRAWAL
-   * ============================================================
-   */
 
   async function rejectWithdrawal(
     withdrawalId: string
@@ -689,22 +692,16 @@ export default function AdminDashboard() {
     setMessage("");
 
     try {
-      const {
-        error,
-      } = await supabase.rpc(
-        "admin_reject_withdrawal",
-        {
-          p_withdrawal_id:
-            withdrawalId,
-        }
-      );
-
-      if (error) {
-        console.error(
-          "REJECT WITHDRAWAL ERROR:",
-          error
+      const { error } =
+        await supabase.rpc(
+          "admin_reject_withdrawal",
+          {
+            p_withdrawal_id:
+              withdrawalId,
+          }
         );
 
+      if (error) {
         setError(error.message);
         return;
       }
@@ -720,9 +717,9 @@ export default function AdminDashboard() {
   }
 
   /*
-   * ============================================================
-   * UPDATE USER STATUS
-   * ============================================================
+   * ==========================================================
+   * USER STATUS
+   * ==========================================================
    */
 
   async function updateUserStatus(
@@ -736,30 +733,22 @@ export default function AdminDashboard() {
     setMessage("");
 
     try {
-      const {
-        error,
-      } = await supabase.rpc(
-        "admin_update_user_status",
-        {
-          p_user_id: user.id,
-          p_status: status,
-        }
-      );
-
-      if (error) {
-        console.error(
-          "STATUS ERROR:",
-          error
+      const { error } =
+        await supabase.rpc(
+          "admin_update_user_status",
+          {
+            p_user_id: user.id,
+            p_status: status,
+          }
         );
 
+      if (error) {
         setError(error.message);
         return;
       }
 
       setMessage(
-        `${getUserName(
-          user
-        )} is now ${status}.`
+        `${getUserName(user)} is now ${status}.`
       );
 
       await loadAll();
@@ -769,9 +758,9 @@ export default function AdminDashboard() {
   }
 
   /*
-   * ============================================================
-   * ADJUST BALANCE
-   * ============================================================
+   * ==========================================================
+   * BALANCE
+   * ==========================================================
    */
 
   async function adjustBalance() {
@@ -781,10 +770,7 @@ export default function AdminDashboard() {
       Number(balanceAmount);
 
     if (!amount || amount <= 0) {
-      setError(
-        "Enter a valid amount."
-      );
-
+      setError("Enter a valid amount.");
       return;
     }
 
@@ -792,7 +778,6 @@ export default function AdminDashboard() {
       setError(
         "Enter a reason for this adjustment."
       );
-
       return;
     }
 
@@ -805,47 +790,34 @@ export default function AdminDashboard() {
 
     try {
       const {
-        data,
         error,
       } = await supabase.rpc(
         "admin_adjust_wallet",
         {
           p_user_id:
             balanceModal.id,
-
           p_amount: amount,
-
           p_direction:
             balanceDirection,
-
           p_reason:
             balanceReason.trim(),
         }
       );
 
       if (error) {
-        console.error(
-          "BALANCE ADJUSTMENT ERROR:",
-          error
-        );
-
         setError(error.message);
         return;
       }
 
       setMessage(
-        balanceDirection === "ADD"
+        balanceDirection ===
+          "ADD"
           ? `$${formatMoney(
             amount
           )} added successfully.`
           : `$${formatMoney(
             amount
           )} deducted successfully.`
-      );
-
-      console.log(
-        "Balance adjustment:",
-        data
       );
 
       setBalanceModal(null);
@@ -860,20 +832,152 @@ export default function AdminDashboard() {
   }
 
   /*
-   * ============================================================
-   * REALTIME PRESENCE
-   * ============================================================
+   * ==========================================================
+   * SUPPORT REPLY
+   * ==========================================================
+   */
+
+  async function replyToSupport() {
+    if (!selectedSupport) return;
+
+    if (!supportReply.trim()) {
+      setError(
+        "Please enter a support reply."
+      );
+      return;
+    }
+
+    setReplyingSupport(true);
+    setError("");
+    setMessage("");
+
+    try {
+      const {
+        data,
+        error,
+      } = await supabase.rpc(
+        "admin_reply_support_request",
+        {
+          p_request_id:
+            selectedSupport.id,
+          p_reply:
+            supportReply.trim(),
+          p_status:
+            supportStatus,
+        }
+      );
+
+      if (error) {
+        console.error(
+          "SUPPORT REPLY ERROR:",
+          error
+        );
+        setError(error.message);
+        return;
+      }
+
+      if (!data?.success) {
+        setError(
+          data?.message ??
+          "Unable to send support reply."
+        );
+        return;
+      }
+
+      setMessage(
+        "Support response sent successfully."
+      );
+
+      setSupportReply("");
+      setSelectedSupport(null);
+
+      await Promise.all([
+        loadSupportRequests(),
+        loadNotifications(),
+      ]);
+    } finally {
+      setReplyingSupport(false);
+    }
+  }
+
+  /*
+   * ==========================================================
+   * PERMANENT DELETE
+   * ==========================================================
    *
-   * IMPORTANT:
+   * This calls a secure Supabase Edge Function.
    *
-   * DashboardLayout also uses:
-   *
-   *     site-presence
-   *
-   * Therefore the admin listens to that SAME channel.
-   *
-   * We DO NOT put useState/useEffect outside the component.
-   * ============================================================
+   * DO NOT put service_role in the React app.
+   * ==========================================================
+   */
+
+  async function permanentlyDeleteUser() {
+    if (!deleteUserModal) return;
+
+    if (deleteUserModal.is_admin) {
+      setError(
+        "Administrator accounts cannot be deleted from here."
+      );
+      return;
+    }
+
+    setDeletingUser(true);
+    setError("");
+    setMessage("");
+
+    try {
+      const {
+        data,
+        error,
+      } = await supabase.functions.invoke(
+        "admin-delete-user",
+        {
+          body: {
+            user_id:
+              deleteUserModal.id,
+          },
+        }
+      );
+
+      if (error) {
+        console.error(
+          "DELETE USER ERROR:",
+          error
+        );
+
+        setError(
+          error.message ||
+          "Unable to permanently delete this user."
+        );
+        return;
+      }
+
+      if (!data?.success) {
+        setError(
+          data?.message ??
+          "Unable to permanently delete this user."
+        );
+        return;
+      }
+
+      setMessage(
+        `${getUserName(
+          deleteUserModal
+        )} was permanently deleted.`
+      );
+
+      setDeleteUserModal(null);
+
+      await loadAll();
+    } finally {
+      setDeletingUser(false);
+    }
+  }
+
+  /*
+   * ==========================================================
+   * PRESENCE
+   * ==========================================================
    */
 
   useEffect(() => {
@@ -888,9 +992,7 @@ export default function AdminDashboard() {
         data: { user },
       } = await supabase.auth.getUser();
 
-      if (!user || cancelled) {
-        return;
-      }
+      if (!user || cancelled) return;
 
       channel = supabase.channel(
         "site-presence",
@@ -927,7 +1029,6 @@ export default function AdminDashboard() {
                 user_id:
                   presence.user_id ??
                   userId,
-
                 online_at:
                   presence.online_at ??
                   new Date().toISOString(),
@@ -939,37 +1040,30 @@ export default function AdminDashboard() {
         setOnlineUsers(online);
       }
 
-      channel.on(
-        "presence",
-        {
-          event: "sync",
-        },
-        updateOnlineUsers
-      );
-
-      channel.on(
-        "presence",
-        {
-          event: "join",
-        },
-        updateOnlineUsers
-      );
-
-      channel.on(
-        "presence",
-        {
-          event: "leave",
-        },
-        updateOnlineUsers
-      );
-
-      channel.subscribe(
-        (status) => {
-          if (status === "SUBSCRIBED") {
+      channel
+        .on(
+          "presence",
+          { event: "sync" },
+          updateOnlineUsers
+        )
+        .on(
+          "presence",
+          { event: "join" },
+          updateOnlineUsers
+        )
+        .on(
+          "presence",
+          { event: "leave" },
+          updateOnlineUsers
+        )
+        .subscribe((status) => {
+          if (
+            status ===
+            "SUBSCRIBED"
+          ) {
             updateOnlineUsers();
           }
-        }
-      );
+        });
     }
 
     setupPresence();
@@ -981,24 +1075,19 @@ export default function AdminDashboard() {
         supabase.removeChannel(
           channel
         );
-
-        channel = null;
       }
     };
   }, []);
 
   /*
-   * ============================================================
+   * ==========================================================
    * HELPERS
-   * ============================================================
+   * ==========================================================
    */
 
-  function getUserName(
-    user: User
-  ) {
+  function getUserName(user: User) {
     const name =
-      `${user.first_name ?? ""} ${user.last_name ?? ""
-        }`.trim();
+      `${user.first_name ?? ""} ${user.last_name ?? ""}`.trim();
 
     return name || "Unnamed User";
   }
@@ -1026,9 +1115,7 @@ export default function AdminDashboard() {
         .toLowerCase()
         .trim();
 
-    if (!q) {
-      return users;
-    }
+    if (!q) return users;
 
     return users.filter(
       (user) =>
@@ -1069,6 +1156,14 @@ export default function AdminDashboard() {
     ).length;
   }
 
+  function formatDate(
+    date: string
+  ) {
+    return new Date(
+      date
+    ).toLocaleString();
+  }
+
   async function logout() {
     await supabase.auth.signOut();
 
@@ -1078,54 +1173,65 @@ export default function AdminDashboard() {
   }
 
   /*
-   * ============================================================
+   * ==========================================================
    * NAVIGATION
-   * ============================================================
+   * ==========================================================
    */
 
   const navigationItems = [
     {
-      value:
-        "overview" as const,
+      value: "overview" as const,
       label: "Overview",
       icon: LayoutGrid,
     },
     {
-      value:
-        "users" as const,
+      value: "users" as const,
       label: "Users",
       icon: Users,
     },
     {
-      value:
-        "deposits" as const,
+      value: "deposits" as const,
       label: "Deposits",
       icon: CreditCard,
     },
     {
-      value:
-        "withdrawals" as const,
+      value: "withdrawals" as const,
       label: "Withdrawals",
       icon: Wallet,
     },
     {
-      value:
-        "notifications" as const,
+      value: "notifications" as const,
       label: "Notifications",
       icon: Bell,
     },
     {
-      value:
-        "audit" as const,
+      value: "support" as const,
+      label: "Support",
+      icon: Headphones,
+    },
+    {
+      value: "audit" as const,
       label: "Audit History",
       icon: FileText,
     },
   ];
 
+  const unreadNotifications =
+    notifications.filter(
+      (n) => !n.read
+    ).length;
+
+  const openSupportCount =
+    supportRequests.filter(
+      (request) =>
+        request.status !==
+        "RESOLVED"
+    ).length;
+
   /*
-   * ============================================================
+   * ==========================================================
    * LOADING
-   * ============================================================
+   * ==========================================================
    */
 
   if (loading) {
@@ -1139,7 +1245,7 @@ export default function AdminDashboard() {
       >
         <div className="text-center">
           <div
-            className="w-10 h-10 border-2 border-t-transparent rounded-full animate-spin mx-auto mb-4"
+            className="w-10 h-10 border-2 rounded-full animate-spin mx-auto mb-4"
             style={{
               borderColor:
                 "#d4a017",
@@ -1151,7 +1257,8 @@ export default function AdminDashboard() {
           <p
             className="text-sm"
             style={{
-              color: "#9090a8",
+              color:
+                "#9090a8",
             }}
           >
             Loading administrator dashboard...
@@ -1162,9 +1269,9 @@ export default function AdminDashboard() {
   }
 
   /*
-   * ============================================================
+   * ==========================================================
    * ACCESS DENIED
-   * ============================================================
+   * ==========================================================
    */
 
   if (
@@ -1176,14 +1283,17 @@ export default function AdminDashboard() {
       <div
         className="min-h-screen flex items-center justify-center px-6"
         style={{
-          background: "#09090e",
-          color: "#f5f0e8",
+          background:
+            "#09090e",
+          color:
+            "#f5f0e8",
         }}
       >
         <div
-          className="w-full max-w-md p-8 border"
+          className="w-full max-w-md p-8 border rounded-2xl"
           style={{
-            background: "#111118",
+            background:
+              "#111118",
             borderColor:
               "rgba(212,160,23,0.2)",
           }}
@@ -1195,7 +1305,8 @@ export default function AdminDashboard() {
           <p
             className="text-sm"
             style={{
-              color: "#ff8b8b",
+              color:
+                "#ff8b8b",
             }}
           >
             {error}
@@ -1203,11 +1314,12 @@ export default function AdminDashboard() {
 
           <button
             onClick={logout}
-            className="mt-6 px-5 py-3 font-bold"
+            className="mt-6 px-5 py-3 rounded-xl font-bold"
             style={{
               background:
                 "#d4a017",
-              color: "#09090e",
+              color:
+                "#09090e",
             }}
           >
             Sign Out
@@ -1217,26 +1329,23 @@ export default function AdminDashboard() {
     );
   }
 
-  /*
-   * ============================================================
-   * MAIN ADMIN PAGE
-   * ============================================================
-   */
-
   return (
     <div
       className="min-h-screen"
       style={{
-        background: "#09090e",
-        color: "#f5f0e8",
+        background:
+          "#09090e",
+        color:
+          "#f5f0e8",
       }}
     >
-      {/* ======================================================
+
+      {/* =====================================================
           DESKTOP SIDEBAR
       ====================================================== */}
 
       <aside
-        className="fixed top-0 left-0 h-screen w-64 border-r hidden lg:flex flex-col z-40"
+        className="fixed top-0 left-0 h-screen w-64 hidden lg:flex flex-col border-r z-40"
         style={{
           background:
             "#0d0d14",
@@ -1244,8 +1353,6 @@ export default function AdminDashboard() {
             "rgba(212,160,23,0.15)",
         }}
       >
-        {/* LOGO */}
-
         <div
           className="border-b px-6 py-6"
           style={{
@@ -1284,14 +1391,12 @@ export default function AdminDashboard() {
           </div>
         </div>
 
-        {/* NAVIGATION */}
-
         <nav className="flex-1 overflow-y-auto px-3 py-5 space-y-1">
           {navigationItems.map(
             ({
               value,
               label,
-              icon: IconComponent,
+              icon: Icon,
             }) => (
               <button
                 key={value}
@@ -1299,19 +1404,17 @@ export default function AdminDashboard() {
                   setActiveSection(
                     value
                   );
-
                   setMobileMenuOpen(
                     false
                   );
                 }}
-                className="w-full flex items-center gap-3 px-4 py-3 text-sm font-medium rounded-lg transition-all"
+                className="w-full flex items-center gap-3 px-4 py-3 text-sm font-medium rounded-xl transition-all"
                 style={{
                   background:
                     activeSection ===
                       value
                       ? "rgba(212,160,23,0.15)"
                       : "transparent",
-
                   color:
                     activeSection ===
                       value
@@ -1319,7 +1422,7 @@ export default function AdminDashboard() {
                       : "#9090a8",
                 }}
               >
-                <IconComponent
+                <Icon
                   size={18}
                   strokeWidth={1.8}
                 />
@@ -1330,9 +1433,8 @@ export default function AdminDashboard() {
 
                 {value ===
                   "notifications" &&
-                  notifications.filter(
-                    (n) => !n.read
-                  ).length > 0 && (
+                  unreadNotifications >
+                  0 && (
                     <span
                       className="ml-auto min-w-5 h-5 px-1 flex items-center justify-center rounded-full text-[10px] font-black"
                       style={{
@@ -1342,12 +1444,24 @@ export default function AdminDashboard() {
                           "#09090e",
                       }}
                     >
-                      {
-                        notifications.filter(
-                          (n) =>
-                            !n.read
-                        ).length
-                      }
+                      {unreadNotifications}
+                    </span>
+                  )}
+
+                {value ===
+                  "support" &&
+                  openSupportCount >
+                  0 && (
+                    <span
+                      className="ml-auto min-w-5 h-5 px-1 flex items-center justify-center rounded-full text-[10px] font-black"
+                      style={{
+                        background:
+                          "#5dcca8",
+                        color:
+                          "#09090e",
+                      }}
+                    >
+                      {openSupportCount}
                     </span>
                   )}
               </button>
@@ -1355,10 +1469,8 @@ export default function AdminDashboard() {
           )}
         </nav>
 
-        {/* ONLINE STATUS */}
-
         <div
-          className="mx-4 mb-4 p-4 border rounded-lg"
+          className="mx-4 mb-4 p-4 border rounded-xl"
           style={{
             background:
               "rgba(93,204,138,0.04)",
@@ -1383,8 +1495,6 @@ export default function AdminDashboard() {
           </div>
         </div>
 
-        {/* LOGOUT */}
-
         <div
           className="border-t p-4"
           style={{
@@ -1394,24 +1504,19 @@ export default function AdminDashboard() {
         >
           <button
             onClick={logout}
-            className="w-full flex items-center gap-3 px-4 py-3 text-sm font-bold rounded-lg"
+            className="w-full flex items-center gap-3 px-4 py-3 text-sm font-bold rounded-xl"
             style={{
               color:
                 "#ff6b6b",
             }}
           >
-            <LogOut
-              size={18}
-            />
-
-            <span>
-              Sign Out
-            </span>
+            <LogOut size={18} />
+            Sign Out
           </button>
         </div>
       </aside>
 
-      {/* ======================================================
+      {/* =====================================================
           HEADER
       ====================================================== */}
 
@@ -1427,14 +1532,16 @@ export default function AdminDashboard() {
         }}
       >
         <div className="px-4 py-4 sm:px-6 flex items-center justify-between">
+
           <div className="flex items-center gap-3">
+
             <button
               onClick={() =>
                 setMobileMenuOpen(
                   !mobileMenuOpen
                 )
               }
-              className="lg:hidden p-2 rounded-lg"
+              className="lg:hidden p-2.5 rounded-xl"
               style={{
                 background:
                   "rgba(212,160,23,0.1)",
@@ -1445,9 +1552,7 @@ export default function AdminDashboard() {
               {mobileMenuOpen ? (
                 <X size={20} />
               ) : (
-                <Menu
-                  size={20}
-                />
+                <Menu size={20} />
               )}
             </button>
 
@@ -1466,17 +1571,17 @@ export default function AdminDashboard() {
                 Admin Control Center
               </h1>
             </div>
+
           </div>
 
           <div className="hidden sm:flex items-center gap-5">
+
             <div className="flex items-center gap-2 text-xs">
               <span
                 className="w-2 h-2 rounded-full"
                 style={{
                   background:
                     "#5dcc8a",
-                  boxShadow:
-                    "0 0 8px rgba(93,204,138,0.7)",
                 }}
               />
 
@@ -1492,7 +1597,7 @@ export default function AdminDashboard() {
 
             <button
               onClick={logout}
-              className="flex items-center gap-2 px-4 py-2 text-sm font-bold rounded-lg"
+              className="flex items-center gap-2 px-4 py-2 text-sm font-bold rounded-xl"
               style={{
                 background:
                   "rgba(255,107,107,0.1)",
@@ -1500,17 +1605,16 @@ export default function AdminDashboard() {
                   "#ff6b6b",
               }}
             >
-              <LogOut
-                size={16}
-              />
-
+              <LogOut size={16} />
               Sign Out
             </button>
+
           </div>
+
         </div>
       </header>
 
-      {/* ======================================================
+      {/* =====================================================
           MOBILE MENU
       ====================================================== */}
 
@@ -1541,7 +1645,7 @@ export default function AdminDashboard() {
               ({
                 value,
                 label,
-                icon: IconComponent,
+                icon: Icon,
               }) => (
                 <button
                   key={value}
@@ -1549,19 +1653,17 @@ export default function AdminDashboard() {
                     setActiveSection(
                       value
                     );
-
                     setMobileMenuOpen(
                       false
                     );
                   }}
-                  className="w-full flex items-center gap-3 px-4 py-4 text-sm font-bold rounded-lg"
+                  className="w-full flex items-center gap-3 px-4 py-4 text-sm font-bold rounded-xl"
                   style={{
                     background:
                       activeSection ===
                         value
                         ? "rgba(212,160,23,0.15)"
                         : "transparent",
-
                     color:
                       activeSection ===
                         value
@@ -1569,9 +1671,7 @@ export default function AdminDashboard() {
                         : "#9090a8",
                   }}
                 >
-                  <IconComponent
-                    size={18}
-                  />
+                  <Icon size={18} />
 
                   <span>
                     {label}
@@ -1579,10 +1679,7 @@ export default function AdminDashboard() {
 
                   {value ===
                     "notifications" &&
-                    notifications.filter(
-                      (n) =>
-                        !n.read
-                    ).length >
+                    unreadNotifications >
                     0 && (
                       <span
                         className="ml-auto min-w-5 h-5 px-1 flex items-center justify-center rounded-full text-[10px] font-black"
@@ -1593,12 +1690,24 @@ export default function AdminDashboard() {
                             "#09090e",
                         }}
                       >
-                        {
-                          notifications.filter(
-                            (n) =>
-                              !n.read
-                          ).length
-                        }
+                        {unreadNotifications}
+                      </span>
+                    )}
+
+                  {value ===
+                    "support" &&
+                    openSupportCount >
+                    0 && (
+                      <span
+                        className="ml-auto min-w-5 h-5 px-1 flex items-center justify-center rounded-full text-[10px] font-black"
+                        style={{
+                          background:
+                            "#5dcc8a",
+                          color:
+                            "#09090e",
+                        }}
+                      >
+                        {openSupportCount}
                       </span>
                     )}
                 </button>
@@ -1608,7 +1717,7 @@ export default function AdminDashboard() {
         </div>
       )}
 
-      {/* ======================================================
+      {/* =====================================================
           MAIN
       ====================================================== */}
 
@@ -1619,7 +1728,7 @@ export default function AdminDashboard() {
 
           {message && (
             <div
-              className="mb-6 p-4 border rounded-lg"
+              className="mb-6 p-4 border rounded-xl"
               style={{
                 background:
                   "rgba(50,180,100,0.08)",
@@ -1635,7 +1744,7 @@ export default function AdminDashboard() {
 
           {error && (
             <div
-              className="mb-6 p-4 border rounded-lg"
+              className="mb-6 p-4 border rounded-xl"
               style={{
                 background:
                   "rgba(255,70,70,0.08)",
@@ -1657,6 +1766,7 @@ export default function AdminDashboard() {
             "overview" &&
             stats && (
               <div>
+
                 <div className="mb-8">
                   <p
                     className="text-xs uppercase tracking-widest font-bold mb-2"
@@ -1692,9 +1802,7 @@ export default function AdminDashboard() {
                       stats.total_users
                     }
                     icon={
-                      <Users
-                        size={20}
-                      />
+                      <Users size={20} />
                     }
                   />
 
@@ -1704,9 +1812,7 @@ export default function AdminDashboard() {
                       stats.active_users
                     }
                     icon={
-                      <Activity
-                        size={20}
-                      />
+                      <Activity size={20} />
                     }
                   />
 
@@ -1716,9 +1822,7 @@ export default function AdminDashboard() {
                       onlineUserCount()
                     }
                     icon={
-                      <Activity
-                        size={20}
-                      />
+                      <Activity size={20} />
                     }
                   />
 
@@ -1728,9 +1832,7 @@ export default function AdminDashboard() {
                       stats.pending_deposits
                     }
                     icon={
-                      <CreditCard
-                        size={20}
-                      />
+                      <CreditCard size={20} />
                     }
                   />
 
@@ -1752,9 +1854,7 @@ export default function AdminDashboard() {
                       stats.total_available_balance
                     )}`}
                     icon={
-                      <Wallet
-                        size={20}
-                      />
+                      <Wallet size={20} />
                     }
                   />
 
@@ -1764,9 +1864,7 @@ export default function AdminDashboard() {
                       stats.total_invested_balance
                     )}`}
                     icon={
-                      <Wallet
-                        size={20}
-                      />
+                      <Wallet size={20} />
                     }
                   />
 
@@ -1784,14 +1882,14 @@ export default function AdminDashboard() {
 
                 </div>
 
-                <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 mt-8">
+                <div className="grid grid-cols-1 lg:grid-cols-4 gap-5 mt-8">
 
                   <QuickCard
-                    title="Pending Deposits"
+                    title="Deposits"
                     value={
                       stats.pending_deposits
                     }
-                    description="Deposits waiting for administrator review."
+                    description="Pending deposits."
                     action={() =>
                       setActiveSection(
                         "deposits"
@@ -1809,7 +1907,7 @@ export default function AdminDashboard() {
                           "PENDING"
                       ).length
                     }
-                    description="Withdrawal requests waiting for processing."
+                    description="Requests awaiting review."
                     action={() =>
                       setActiveSection(
                         "withdrawals"
@@ -1819,14 +1917,25 @@ export default function AdminDashboard() {
                   />
 
                   <QuickCard
+                    title="Support"
+                    value={
+                      openSupportCount
+                    }
+                    description="Open support requests."
+                    action={() =>
+                      setActiveSection(
+                        "support"
+                      )
+                    }
+                    button="Open Support"
+                  />
+
+                  <QuickCard
                     title="Notifications"
                     value={
-                      notifications.filter(
-                        (n) =>
-                          !n.read
-                      ).length
+                      unreadNotifications
                     }
-                    description="View sent notifications and send new messages."
+                    description="Unread notifications."
                     action={() =>
                       setActiveSection(
                         "notifications"
@@ -1848,6 +1957,7 @@ export default function AdminDashboard() {
               <div>
 
                 <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-5 mb-6">
+
                   <div>
                     <h2 className="text-3xl font-black">
                       User Management
@@ -1873,7 +1983,7 @@ export default function AdminDashboard() {
                       )
                     }
                     placeholder="Search users..."
-                    className="px-4 py-3 border outline-none w-full md:w-80"
+                    className="px-4 py-3 border outline-none w-full md:w-80 rounded-xl"
                     style={{
                       background:
                         "#111118",
@@ -1883,10 +1993,11 @@ export default function AdminDashboard() {
                         "#f5f0e8",
                     }}
                   />
+
                 </div>
 
                 <div
-                  className="border overflow-hidden rounded-lg"
+                  className="border overflow-hidden rounded-xl"
                   style={{
                     background:
                       "#111118",
@@ -1894,8 +2005,10 @@ export default function AdminDashboard() {
                       "rgba(255,255,255,0.08)",
                   }}
                 >
+
                   <div className="overflow-x-auto">
-                    <table className="w-full min-w-[1000px] text-sm">
+
+                    <table className="w-full min-w-[1250px] text-sm">
 
                       <thead>
                         <tr
@@ -1936,12 +2049,9 @@ export default function AdminDashboard() {
                       </thead>
 
                       <tbody>
+
                         {filteredUsers().map(
                           (user) => {
-                            const name =
-                              getUserName(
-                                user
-                              );
 
                             const online =
                               isUserOnline(
@@ -1959,9 +2069,12 @@ export default function AdminDashboard() {
                                     "rgba(255,255,255,0.06)",
                                 }}
                               >
+
                                 <td className="p-5">
                                   <div className="font-bold">
-                                    {name}
+                                    {getUserName(
+                                      user
+                                    )}
                                   </div>
 
                                   {user.is_admin && (
@@ -1979,8 +2092,9 @@ export default function AdminDashboard() {
 
                                 <td className="p-5">
                                   <div>
-                                    {user.email ||
-                                      "—"}
+                                    {
+                                      user.email
+                                    }
                                   </div>
 
                                   <div
@@ -1990,9 +2104,9 @@ export default function AdminDashboard() {
                                         "#9090a8",
                                     }}
                                   >
-                                    {user.phone ||
-                                      "No phone"}
-
+                                    {
+                                      user.phone
+                                    }
                                     {user.country
                                       ? ` • ${user.country}`
                                       : ""}
@@ -2007,14 +2121,14 @@ export default function AdminDashboard() {
                                   />
                                 </td>
 
-                                <td className="p-5 font-bold whitespace-nowrap">
+                                <td className="p-5 font-bold">
                                   $
                                   {formatMoney(
                                     user.available_balance
                                   )}
                                 </td>
 
-                                <td className="p-5 whitespace-nowrap">
+                                <td className="p-5">
                                   $
                                   {formatMoney(
                                     user.invested_balance
@@ -2022,7 +2136,9 @@ export default function AdminDashboard() {
                                 </td>
 
                                 <td className="p-5">
+
                                   <div className="flex items-center gap-2">
+
                                     <span
                                       className="w-2 h-2 rounded-full"
                                       style={{
@@ -2030,10 +2146,6 @@ export default function AdminDashboard() {
                                           online
                                             ? "#5dcc8a"
                                             : "#555",
-                                        boxShadow:
-                                          online
-                                            ? "0 0 7px rgba(93,204,138,0.7)"
-                                            : "none",
                                       }}
                                     />
 
@@ -2050,13 +2162,16 @@ export default function AdminDashboard() {
                                         ? "ONLINE"
                                         : "OFFLINE"}
                                     </span>
+
                                   </div>
+
                                 </td>
 
                                 <td className="p-5">
-                                  <div className="flex flex-wrap gap-2">
 
-                                    {!user.is_admin && (
+                                  {!user.is_admin && (
+                                    <div className="flex flex-wrap gap-2">
+
                                       <button
                                         disabled={
                                           !!processing
@@ -2066,7 +2181,7 @@ export default function AdminDashboard() {
                                             user
                                           )
                                         }
-                                        className="px-3 py-2 text-xs font-bold"
+                                        className="px-3 py-2 text-xs font-bold rounded-lg"
                                         style={{
                                           background:
                                             "#d4a017",
@@ -2076,94 +2191,97 @@ export default function AdminDashboard() {
                                       >
                                         Adjust Balance
                                       </button>
-                                    )}
 
-                                    {!user.is_admin &&
-                                      user.status !==
-                                      "ACTIVE" && (
-                                        <button
-                                          disabled={
-                                            !!processing
-                                          }
-                                          onClick={() =>
-                                            updateUserStatus(
-                                              user,
-                                              "ACTIVE"
-                                            )
-                                          }
-                                          className="px-3 py-2 text-xs font-bold border"
-                                          style={{
-                                            borderColor:
-                                              "rgba(50,180,100,0.3)",
-                                            color:
-                                              "#71d69a",
-                                          }}
-                                        >
-                                          Activate
-                                        </button>
-                                      )}
+                                      {user.status !==
+                                        "ACTIVE" && (
+                                          <button
+                                            disabled={
+                                              !!processing
+                                            }
+                                            onClick={() =>
+                                              updateUserStatus(
+                                                user,
+                                                "ACTIVE"
+                                              )
+                                            }
+                                            className="px-3 py-2 text-xs font-bold border rounded-lg"
+                                            style={{
+                                              color:
+                                                "#71d69a",
+                                              borderColor:
+                                                "rgba(50,180,100,0.3)",
+                                            }}
+                                          >
+                                            Activate
+                                          </button>
+                                        )}
 
-                                    {!user.is_admin &&
-                                      user.status !==
-                                      "SUSPENDED" && (
-                                        <button
-                                          disabled={
-                                            !!processing
-                                          }
-                                          onClick={() =>
-                                            updateUserStatus(
-                                              user,
-                                              "SUSPENDED"
-                                            )
-                                          }
-                                          className="px-3 py-2 text-xs font-bold border"
-                                          style={{
-                                            borderColor:
-                                              "rgba(212,160,23,0.3)",
-                                            color:
-                                              "#d4a017",
-                                          }}
-                                        >
-                                          Suspend
-                                        </button>
-                                      )}
+                                      {user.status !==
+                                        "SUSPENDED" && (
+                                          <button
+                                            disabled={
+                                              !!processing
+                                            }
+                                            onClick={() =>
+                                              updateUserStatus(
+                                                user,
+                                                "SUSPENDED"
+                                              )
+                                            }
+                                            className="px-3 py-2 text-xs font-bold border rounded-lg"
+                                            style={{
+                                              color:
+                                                "#d4a017",
+                                              borderColor:
+                                                "rgba(212,160,23,0.3)",
+                                            }}
+                                          >
+                                            Suspend
+                                          </button>
+                                        )}
 
-                                    {!user.is_admin &&
-                                      user.status !==
-                                      "DISABLED" && (
-                                        <button
-                                          disabled={
-                                            !!processing
-                                          }
-                                          onClick={() =>
-                                            updateUserStatus(
-                                              user,
-                                              "DISABLED"
-                                            )
-                                          }
-                                          className="px-3 py-2 text-xs font-bold border"
-                                          style={{
-                                            borderColor:
-                                              "rgba(220,70,70,0.3)",
-                                            color:
-                                              "#ff8b8b",
-                                          }}
-                                        >
-                                          Disable
-                                        </button>
-                                      )}
+                                      <button
+                                        disabled={
+                                          !!processing ||
+                                          deletingUser
+                                        }
+                                        onClick={() =>
+                                          setDeleteUserModal(
+                                            user
+                                          )
+                                        }
+                                        className="px-3 py-2 text-xs font-bold border rounded-lg flex items-center gap-1.5"
+                                        style={{
+                                          color:
+                                            "#ff8b8b",
+                                          borderColor:
+                                            "rgba(255,70,70,0.25)",
+                                        }}
+                                      >
+                                        <Trash2
+                                          size={13}
+                                        />
+                                        Delete
+                                      </button>
 
-                                  </div>
+                                    </div>
+                                  )}
+
                                 </td>
+
                               </tr>
                             );
                           }
                         )}
+
                       </tbody>
 
                     </table>
+
                   </div>
+
                 </div>
+
               </div>
             )}
 
@@ -2181,7 +2299,7 @@ export default function AdminDashboard() {
                   </h2>
 
                   <p
-                    className="mt-2"
+                    className="mt-2 text-sm"
                     style={{
                       color:
                         "#9090a8",
@@ -2192,7 +2310,7 @@ export default function AdminDashboard() {
                 </div>
 
                 <div
-                  className="border overflow-hidden rounded-lg"
+                  className="border overflow-hidden rounded-xl"
                   style={{
                     background:
                       "#111118",
@@ -2200,6 +2318,7 @@ export default function AdminDashboard() {
                       "rgba(255,255,255,0.08)",
                   }}
                 >
+
                   {deposits.length ===
                     0 ? (
                     <div
@@ -2251,11 +2370,12 @@ export default function AdminDashboard() {
                         </thead>
 
                         <tbody>
+
                           {deposits.map(
                             (deposit) => {
+
                               const userName =
-                                `${deposit.first_name ?? ""} ${deposit.last_name ?? ""
-                                  }`.trim() ||
+                                `${deposit.first_name ?? ""} ${deposit.last_name ?? ""}`.trim() ||
                                 "Unknown User";
 
                               const busy =
@@ -2273,9 +2393,12 @@ export default function AdminDashboard() {
                                       "rgba(255,255,255,0.06)",
                                   }}
                                 >
+
                                   <td className="p-5">
                                     <div className="font-bold">
-                                      {userName}
+                                      {
+                                        userName
+                                      }
                                     </div>
 
                                     <div
@@ -2291,7 +2414,7 @@ export default function AdminDashboard() {
                                     </div>
                                   </td>
 
-                                  <td className="p-5 font-bold whitespace-nowrap">
+                                  <td className="p-5 font-bold">
                                     {
                                       deposit.currency
                                     }{" "}
@@ -2313,8 +2436,9 @@ export default function AdminDashboard() {
                                         "#c7c2b8",
                                     }}
                                   >
-                                    {deposit.provider_reference ||
-                                      "—"}
+                                    {
+                                      deposit.provider_reference
+                                    }
                                   </td>
 
                                   <td
@@ -2324,12 +2448,13 @@ export default function AdminDashboard() {
                                         "#9090a8",
                                     }}
                                   >
-                                    {new Date(
+                                    {formatDate(
                                       deposit.created_at
-                                    ).toLocaleString()}
+                                    )}
                                   </td>
 
                                   <td className="p-5">
+
                                     <div className="flex gap-2">
 
                                       <button
@@ -2341,7 +2466,7 @@ export default function AdminDashboard() {
                                             deposit.id
                                           )
                                         }
-                                        className="px-4 py-2 text-xs font-bold"
+                                        className="px-4 py-2 text-xs font-bold rounded-lg"
                                         style={{
                                           background:
                                             "#5dcc8a",
@@ -2363,7 +2488,7 @@ export default function AdminDashboard() {
                                             deposit.id
                                           )
                                         }
-                                        className="px-4 py-2 text-xs font-bold"
+                                        className="px-4 py-2 text-xs font-bold rounded-lg"
                                         style={{
                                           background:
                                             "#e05050",
@@ -2375,17 +2500,21 @@ export default function AdminDashboard() {
                                       </button>
 
                                     </div>
+
                                   </td>
+
                                 </tr>
                               );
                             }
                           )}
+
                         </tbody>
 
                       </table>
 
                     </div>
                   )}
+
                 </div>
               </div>
             )}
@@ -2404,18 +2533,18 @@ export default function AdminDashboard() {
                   </h2>
 
                   <p
-                    className="mt-2"
+                    className="mt-2 text-sm"
                     style={{
                       color:
                         "#9090a8",
                     }}
                   >
-                    Review, approve or reject user withdrawal requests.
+                    Review, approve or reject withdrawal requests.
                   </p>
                 </div>
 
                 <div
-                  className="border overflow-hidden rounded-lg"
+                  className="border overflow-hidden rounded-xl"
                   style={{
                     background:
                       "#111118",
@@ -2423,6 +2552,7 @@ export default function AdminDashboard() {
                       "rgba(255,255,255,0.08)",
                   }}
                 >
+
                   {withdrawals.length ===
                     0 ? (
                     <div
@@ -2474,11 +2604,12 @@ export default function AdminDashboard() {
                         </thead>
 
                         <tbody>
+
                           {withdrawals.map(
                             (withdrawal) => {
+
                               const name =
-                                `${withdrawal.first_name ?? ""} ${withdrawal.last_name ?? ""
-                                  }`.trim() ||
+                                `${withdrawal.first_name ?? ""} ${withdrawal.last_name ?? ""}`.trim() ||
                                 "Unnamed User";
 
                               const pending =
@@ -2519,7 +2650,7 @@ export default function AdminDashboard() {
                                     </div>
                                   </td>
 
-                                  <td className="p-5 font-bold whitespace-nowrap">
+                                  <td className="p-5 font-bold">
                                     {
                                       withdrawal.currency
                                     }{" "}
@@ -2528,18 +2659,10 @@ export default function AdminDashboard() {
                                     )}
                                   </td>
 
-                                  <td
-                                    className="p-5 max-w-sm"
-                                    style={{
-                                      color:
-                                        "#c7c2b8",
-                                    }}
-                                  >
-                                    <div className="break-words">
-                                      {
-                                        withdrawal.destination
-                                      }
-                                    </div>
+                                  <td className="p-5 max-w-xs">
+                                    {
+                                      withdrawal.destination
+                                    }
                                   </td>
 
                                   <td className="p-5">
@@ -2557,12 +2680,13 @@ export default function AdminDashboard() {
                                         "#9090a8",
                                     }}
                                   >
-                                    {new Date(
+                                    {formatDate(
                                       withdrawal.created_at
-                                    ).toLocaleString()}
+                                    )}
                                   </td>
 
                                   <td className="p-5">
+
                                     {pending ? (
                                       <div className="flex gap-2">
 
@@ -2575,7 +2699,7 @@ export default function AdminDashboard() {
                                               withdrawal.id
                                             )
                                           }
-                                          className="px-4 py-2 text-xs font-bold"
+                                          className="px-4 py-2 text-xs font-bold rounded-lg"
                                           style={{
                                             background:
                                               "#5dcc8a",
@@ -2597,7 +2721,7 @@ export default function AdminDashboard() {
                                               withdrawal.id
                                             )
                                           }
-                                          className="px-4 py-2 text-xs font-bold"
+                                          className="px-4 py-2 text-xs font-bold rounded-lg"
                                           style={{
                                             background:
                                               "#e05050",
@@ -2620,18 +2744,21 @@ export default function AdminDashboard() {
                                         Processed
                                       </span>
                                     )}
+
                                   </td>
 
                                 </tr>
                               );
                             }
                           )}
+
                         </tbody>
 
                       </table>
 
                     </div>
                   )}
+
                 </div>
               </div>
             )}
@@ -2650,7 +2777,7 @@ export default function AdminDashboard() {
                   </h2>
 
                   <p
-                    className="mt-2"
+                    className="mt-2 text-sm"
                     style={{
                       color:
                         "#9090a8",
@@ -2660,10 +2787,8 @@ export default function AdminDashboard() {
                   </p>
                 </div>
 
-                {/* SEND NOTIFICATION */}
-
                 <div
-                  className="mb-8 border p-6 rounded-lg"
+                  className="mb-8 border p-6 rounded-xl"
                   style={{
                     background:
                       "#111118",
@@ -2671,7 +2796,9 @@ export default function AdminDashboard() {
                       "rgba(212,160,23,0.15)",
                   }}
                 >
+
                   <div className="flex items-center gap-3 mb-6">
+
                     <div
                       className="w-10 h-10 flex items-center justify-center rounded-lg"
                       style={{
@@ -2681,9 +2808,7 @@ export default function AdminDashboard() {
                           "#d4a017",
                       }}
                     >
-                      <Bell
-                        size={20}
-                      />
+                      <Bell size={20} />
                     </div>
 
                     <div>
@@ -2701,9 +2826,11 @@ export default function AdminDashboard() {
                         Send a message directly to a user's notification center.
                       </p>
                     </div>
+
                   </div>
 
                   <div className="mb-5">
+
                     <label className="mb-2 block text-sm font-semibold">
                       Select User
                     </label>
@@ -2726,7 +2853,7 @@ export default function AdminDashboard() {
                           null
                         );
                       }}
-                      className="w-full border px-4 py-3 outline-none"
+                      className="w-full border px-4 py-3 outline-none rounded-xl"
                       style={{
                         background:
                           "#0d0d14",
@@ -2736,6 +2863,7 @@ export default function AdminDashboard() {
                           "rgba(212,160,23,0.2)",
                       }}
                     >
+
                       <option value="">
                         Select a user
                       </option>
@@ -2764,10 +2892,12 @@ export default function AdminDashboard() {
                             </option>
                           )
                         )}
+
                     </select>
                   </div>
 
                   <div className="mb-5">
+
                     <label className="mb-2 block text-sm font-semibold">
                       Notification Title
                     </label>
@@ -2783,7 +2913,7 @@ export default function AdminDashboard() {
                         )
                       }
                       placeholder="Enter notification title"
-                      className="w-full border px-4 py-3 outline-none"
+                      className="w-full border px-4 py-3 outline-none rounded-xl"
                       style={{
                         background:
                           "#0d0d14",
@@ -2793,9 +2923,11 @@ export default function AdminDashboard() {
                           "rgba(212,160,23,0.2)",
                       }}
                     />
+
                   </div>
 
                   <div className="mb-5">
+
                     <label className="mb-2 block text-sm font-semibold">
                       Message
                     </label>
@@ -2811,7 +2943,7 @@ export default function AdminDashboard() {
                       }
                       placeholder="Write your message to the user..."
                       rows={6}
-                      className="w-full resize-y border px-4 py-3 outline-none"
+                      className="w-full resize-y border px-4 py-3 outline-none rounded-xl"
                       style={{
                         background:
                           "#0d0d14",
@@ -2821,47 +2953,8 @@ export default function AdminDashboard() {
                           "rgba(212,160,23,0.2)",
                       }}
                     />
+
                   </div>
-
-                  {notificationUser && (
-                    <div
-                      className="mb-5 p-4 border"
-                      style={{
-                        background:
-                          "rgba(212,160,23,0.05)",
-                        borderColor:
-                          "rgba(212,160,23,0.15)",
-                      }}
-                    >
-                      <p
-                        className="text-xs"
-                        style={{
-                          color:
-                            "#9090a8",
-                        }}
-                      >
-                        Sending to
-                      </p>
-
-                      <p className="font-bold mt-1">
-                        {getUserName(
-                          notificationUser
-                        )}
-                      </p>
-
-                      <p
-                        className="text-xs mt-1"
-                        style={{
-                          color:
-                            "#777789",
-                        }}
-                      >
-                        {
-                          notificationUser.email
-                        }
-                      </p>
-                    </div>
-                  )}
 
                   <button
                     onClick={
@@ -2870,7 +2963,7 @@ export default function AdminDashboard() {
                     disabled={
                       sendingNotification
                     }
-                    className="px-6 py-3 font-bold"
+                    className="px-6 py-3 font-bold rounded-xl"
                     style={{
                       background:
                         sendingNotification
@@ -2878,23 +2971,18 @@ export default function AdminDashboard() {
                           : "#d4a017",
                       color:
                         "#09090e",
-                      cursor:
-                        sendingNotification
-                          ? "not-allowed"
-                          : "pointer",
                     }}
                   >
                     {sendingNotification
                       ? "Sending..."
                       : "Send Notification"}
                   </button>
+
                 </div>
 
-                {/* HISTORY */}
-
                 <div>
-                  <div className="mb-5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
 
+                  <div className="flex items-center justify-between mb-5">
                     <div>
                       <h3 className="text-2xl font-black">
                         Notification History
@@ -2915,7 +3003,7 @@ export default function AdminDashboard() {
                       onClick={
                         loadNotifications
                       }
-                      className="border px-4 py-2 text-sm font-semibold"
+                      className="border px-4 py-2 text-sm font-semibold rounded-lg"
                       style={{
                         borderColor:
                           "rgba(212,160,23,0.2)",
@@ -2925,12 +3013,11 @@ export default function AdminDashboard() {
                     >
                       Refresh
                     </button>
-
                   </div>
 
                   {loadingNotifications ? (
                     <div
-                      className="border p-8 text-center"
+                      className="border p-8 text-center rounded-xl"
                       style={{
                         background:
                           "#111118",
@@ -2942,24 +3029,9 @@ export default function AdminDashboard() {
                     >
                       Loading notification history...
                     </div>
-                  ) : notifications.length ===
-                    0 ? (
-                    <div
-                      className="border p-8 text-center"
-                      style={{
-                        background:
-                          "#111118",
-                        borderColor:
-                          "rgba(255,255,255,0.08)",
-                        color:
-                          "#9090a8",
-                      }}
-                    >
-                      No notifications have been sent yet.
-                    </div>
                   ) : (
                     <div
-                      className="overflow-hidden border rounded-lg"
+                      className="border overflow-hidden rounded-xl"
                       style={{
                         background:
                           "#111118",
@@ -2967,147 +3039,383 @@ export default function AdminDashboard() {
                           "rgba(255,255,255,0.08)",
                       }}
                     >
-                      <div className="overflow-x-auto">
 
-                        <table className="w-full min-w-[850px] text-sm">
-
-                          <thead>
-                            <tr
-                              className="border-b text-left"
+                      {notifications.length ===
+                        0 ? (
+                        <div
+                          className="p-8 text-center"
+                          style={{
+                            color:
+                              "#9090a8",
+                          }}
+                        >
+                          No notifications sent yet.
+                        </div>
+                      ) : (
+                        notifications.map(
+                          (notification) => (
+                            <div
+                              key={
+                                notification.id
+                              }
+                              className="p-5 border-b"
                               style={{
                                 borderColor:
-                                  "rgba(255,255,255,0.08)",
+                                  "rgba(255,255,255,0.06)",
                               }}
                             >
-                              <th className="p-5">
-                                User
-                              </th>
+                              <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-3">
 
-                              <th className="p-5">
-                                Notification
-                              </th>
+                                <div>
+                                  <p className="font-bold">
+                                    {
+                                      notification.title
+                                    }
+                                  </p>
 
-                              <th className="p-5">
-                                Message
-                              </th>
-
-                              <th className="p-5">
-                                Status
-                              </th>
-
-                              <th className="p-5">
-                                Date
-                              </th>
-                            </tr>
-                          </thead>
-
-                          <tbody>
-                            {notifications.map(
-                              (
-                                notification
-                              ) => (
-                                <tr
-                                  key={
-                                    notification.id
-                                  }
-                                  className="border-b"
-                                  style={{
-                                    borderColor:
-                                      "rgba(255,255,255,0.06)",
-                                  }}
-                                >
-
-                                  <td className="p-5">
-                                    <div className="font-bold">
-                                      {
-                                        notification.user_name
-                                      }
-                                    </div>
-
-                                    <div
-                                      className="mt-1 text-xs"
-                                      style={{
-                                        color:
-                                          "#777789",
-                                      }}
-                                    >
-                                      {
-                                        notification.user_email
-                                      }
-                                    </div>
-                                  </td>
-
-                                  <td className="p-5">
-                                    <div className="font-semibold">
-                                      {
-                                        notification.title
-                                      }
-                                    </div>
-                                  </td>
-
-                                  <td className="p-5 max-w-md">
-                                    <p
-                                      className="line-clamp-3"
-                                      style={{
-                                        color:
-                                          "#9090a8",
-                                      }}
-                                    >
-                                      {
-                                        notification.message
-                                      }
-                                    </p>
-                                  </td>
-
-                                  <td className="p-5">
-                                    <span
-                                      className="inline-block px-3 py-1 text-xs font-bold"
-                                      style={{
-                                        background:
-                                          notification.read
-                                            ? "rgba(255,255,255,0.05)"
-                                            : "rgba(212,160,23,0.1)",
-
-                                        color:
-                                          notification.read
-                                            ? "#9090a8"
-                                            : "#d4a017",
-                                      }}
-                                    >
-                                      {notification.read
-                                        ? "READ"
-                                        : "UNREAD"}
-                                    </span>
-                                  </td>
-
-                                  <td
-                                    className="whitespace-nowrap p-5"
+                                  <p
+                                    className="text-xs mt-1"
                                     style={{
                                       color:
-                                        "#9090a8",
+                                        "#777789",
                                     }}
                                   >
-                                    {new Date(
-                                      notification.created_at
-                                    ).toLocaleString()}
-                                  </td>
+                                    {
+                                      notification.user_name
+                                    }
+                                    {" • "}
+                                    {
+                                      notification.user_email
+                                    }
+                                  </p>
+                                </div>
 
-                                </tr>
-                              )
-                            )}
-                          </tbody>
+                                <span
+                                  className="self-start px-3 py-1 text-[10px] font-bold"
+                                  style={{
+                                    background:
+                                      notification.read
+                                        ? "rgba(255,255,255,0.05)"
+                                        : "rgba(212,160,23,0.1)",
+                                    color:
+                                      notification.read
+                                        ? "#9090a8"
+                                        : "#d4a017",
+                                  }}
+                                >
+                                  {notification.read
+                                    ? "READ"
+                                    : "UNREAD"}
+                                </span>
 
-                        </table>
+                              </div>
 
-                      </div>
+                              <p
+                                className="text-sm mt-3 leading-6"
+                                style={{
+                                  color:
+                                    "#a7a3a0",
+                                }}
+                              >
+                                {
+                                  notification.message
+                                }
+                              </p>
+
+                              <p
+                                className="text-xs mt-3"
+                                style={{
+                                  color:
+                                    "#666678",
+                                }}
+                              >
+                                {formatDate(
+                                  notification.created_at
+                                )}
+                              </p>
+                            </div>
+                          )
+                        )
+                      )}
+
                     </div>
                   )}
+
                 </div>
               </div>
             )}
 
           {/* ==================================================
-              AUDIT HISTORY
+              SUPPORT
+          ================================================== */}
+
+          {activeSection ===
+            "support" && (
+              <div>
+
+                <div className="mb-8">
+                  <div className="flex items-center gap-3">
+
+                    <div
+                      className="w-12 h-12 rounded-xl flex items-center justify-center"
+                      style={{
+                        background:
+                          "rgba(93,204,138,0.08)",
+                        color:
+                          "#5dcc8a",
+                      }}
+                    >
+                      <Headphones
+                        size={22}
+                      />
+                    </div>
+
+                    <div>
+                      <h2 className="text-3xl font-black">
+                        Support Inbox
+                      </h2>
+
+                      <p
+                        className="mt-1 text-sm"
+                        style={{
+                          color:
+                            "#9090a8",
+                        }}
+                      >
+                        Read user problems and respond directly from the admin panel.
+                      </p>
+                    </div>
+
+                  </div>
+                </div>
+
+                {loadingSupport ? (
+                  <div
+                    className="p-10 border rounded-xl text-center"
+                    style={{
+                      background:
+                        "#111118",
+                      borderColor:
+                        "rgba(255,255,255,0.08)",
+                      color:
+                        "#9090a8",
+                    }}
+                  >
+                    Loading support requests...
+                  </div>
+                ) : supportRequests.length ===
+                  0 ? (
+                  <div
+                    className="p-12 border rounded-xl text-center"
+                    style={{
+                      background:
+                        "#111118",
+                      borderColor:
+                        "rgba(255,255,255,0.08)",
+                    }}
+                  >
+                    <MessageSquare
+                      size={38}
+                      className="mx-auto"
+                      style={{
+                        color:
+                          "#d4a017",
+                      }}
+                    />
+
+                    <h3 className="mt-4 font-bold text-xl">
+                      No support requests
+                    </h3>
+
+                    <p
+                      className="mt-2 text-sm"
+                      style={{
+                        color:
+                          "#9090a8",
+                      }}
+                    >
+                      New user support messages will appear here.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+
+                    {supportRequests.map(
+                      (request) => (
+                        <div
+                          key={
+                            request.id
+                          }
+                          className="border rounded-xl p-5"
+                          style={{
+                            background:
+                              "#111118",
+                            borderColor:
+                              "rgba(255,255,255,0.08)",
+                          }}
+                        >
+
+                          <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-5">
+
+                            <div className="flex-1">
+
+                              <div className="flex flex-wrap items-center gap-3">
+
+                                <h3 className="text-lg font-bold">
+                                  {
+                                    request.subject
+                                  }
+                                </h3>
+
+                                <SupportStatusBadge
+                                  status={
+                                    request.status
+                                  }
+                                />
+
+                              </div>
+
+                              <div className="mt-2 text-xs">
+                                <span
+                                  style={{
+                                    color:
+                                      "#d4a017",
+                                  }}
+                                >
+                                  {
+                                    request.user_name ||
+                                    "Unknown User"
+                                  }
+                                </span>
+
+                                <span
+                                  style={{
+                                    color:
+                                      "#666678",
+                                  }}
+                                >
+                                  {" • "}
+                                </span>
+
+                                <span
+                                  style={{
+                                    color:
+                                      "#777789",
+                                  }}
+                                >
+                                  {
+                                    request.user_email
+                                  }
+                                </span>
+                              </div>
+
+                              <p
+                                className="mt-4 text-sm leading-7"
+                                style={{
+                                  color:
+                                    "#c4c0bb",
+                                }}
+                              >
+                                {
+                                  request.message
+                                }
+                              </p>
+
+                              <p
+                                className="mt-3 text-xs"
+                                style={{
+                                  color:
+                                    "#666678",
+                                }}
+                              >
+                                Submitted{" "}
+                                {formatDate(
+                                  request.created_at
+                                )}
+                              </p>
+
+                              {request.admin_reply && (
+                                <div
+                                  className="mt-5 p-4 border rounded-xl"
+                                  style={{
+                                    background:
+                                      "rgba(93,204,138,0.04)",
+                                    borderColor:
+                                      "rgba(93,204,138,0.15)",
+                                  }}
+                                >
+                                  <p
+                                    className="text-xs uppercase tracking-wider font-bold mb-2"
+                                    style={{
+                                      color:
+                                        "#5dcc8a",
+                                    }}
+                                  >
+                                    Previous reply
+                                  </p>
+
+                                  <p
+                                    className="text-sm leading-6"
+                                    style={{
+                                      color:
+                                        "#c4c0bb",
+                                    }}
+                                  >
+                                    {
+                                      request.admin_reply
+                                    }
+                                  </p>
+                                </div>
+                              )}
+
+                            </div>
+
+                            <button
+                              onClick={() => {
+                                setSelectedSupport(
+                                  request
+                                );
+                                setSupportReply(
+                                  request.admin_reply ??
+                                  ""
+                                );
+                                setSupportStatus(
+                                  request.status ===
+                                    "RESOLVED"
+                                    ? "RESOLVED"
+                                    : "IN_PROGRESS"
+                                );
+                              }}
+                              className="px-5 py-3 font-bold rounded-xl flex items-center justify-center gap-2"
+                              style={{
+                                background:
+                                  "#d4a017",
+                                color:
+                                  "#09090e",
+                              }}
+                            >
+                              <MessageSquare
+                                size={17}
+                              />
+                              {request.admin_reply
+                                ? "Reply Again"
+                                : "Reply"}
+                            </button>
+
+                          </div>
+
+                        </div>
+                      )
+                    )}
+
+                  </div>
+                )}
+
+              </div>
+            )}
+
+          {/* ==================================================
+              AUDIT
           ================================================== */}
 
           {activeSection ===
@@ -3120,7 +3428,7 @@ export default function AdminDashboard() {
                   </h2>
 
                   <p
-                    className="mt-2"
+                    className="mt-2 text-sm"
                     style={{
                       color:
                         "#9090a8",
@@ -3131,7 +3439,7 @@ export default function AdminDashboard() {
                 </div>
 
                 <div
-                  className="border overflow-hidden rounded-lg"
+                  className="border overflow-hidden rounded-xl"
                   style={{
                     background:
                       "#111118",
@@ -3139,6 +3447,7 @@ export default function AdminDashboard() {
                       "rgba(255,255,255,0.08)",
                   }}
                 >
+
                   {auditLogs.length ===
                     0 ? (
                     <div
@@ -3166,23 +3475,18 @@ export default function AdminDashboard() {
                             <th className="p-5">
                               Action
                             </th>
-
                             <th className="p-5">
                               Administrator
                             </th>
-
                             <th className="p-5">
                               User
                             </th>
-
                             <th className="p-5">
                               Amount
                             </th>
-
                             <th className="p-5">
                               Details
                             </th>
-
                             <th className="p-5">
                               Date
                             </th>
@@ -3190,6 +3494,7 @@ export default function AdminDashboard() {
                         </thead>
 
                         <tbody>
+
                           {auditLogs.map(
                             (log) => (
                               <tr
@@ -3220,13 +3525,16 @@ export default function AdminDashboard() {
                                 </td>
 
                                 <td className="p-5">
-                                  {log.admin_name ||
-                                    "Administrator"}
+                                  {
+                                    log.admin_name
+                                  }
                                 </td>
 
                                 <td className="p-5">
-                                  {log.target_user_name ||
-                                    "—"}
+                                  {
+                                    log.target_user_name ||
+                                    "—"
+                                  }
                                 </td>
 
                                 <td className="p-5 font-bold">
@@ -3271,279 +3579,496 @@ export default function AdminDashboard() {
                                       "#9090a8",
                                   }}
                                 >
-                                  {new Date(
+                                  {formatDate(
                                     log.created_at
-                                  ).toLocaleString()}
+                                  )}
                                 </td>
                               </tr>
                             )
                           )}
+
                         </tbody>
 
                       </table>
 
                     </div>
                   )}
+
                 </div>
+
               </div>
             )}
 
         </div>
       </main>
 
-      {/* ======================================================
-          WALLET ADJUSTMENT MODAL
+      {/* =====================================================
+          BALANCE MODAL
       ====================================================== */}
 
       {balanceModal && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center px-5"
-          style={{
-            background:
-              "rgba(0,0,0,0.75)",
+        <ModalShell
+          onClose={() => {
+            setBalanceModal(
+              null
+            );
+            setBalanceAmount("");
+            setBalanceReason("");
           }}
         >
-          <div
-            className="w-full max-w-lg p-7 border rounded-lg"
-            style={{
-              background:
-                "#111118",
-              borderColor:
-                "rgba(212,160,23,0.25)",
-            }}
-          >
-            <div className="flex justify-between items-start mb-6">
+          <div className="flex justify-between items-start mb-6">
 
-              <div>
-                <h2 className="text-2xl font-black">
-                  Adjust Wallet
-                </h2>
+            <div>
+              <h2 className="text-2xl font-black">
+                Adjust Wallet
+              </h2>
 
-                <p
-                  className="text-sm mt-1"
-                  style={{
-                    color:
-                      "#9090a8",
-                  }}
-                >
-                  {getUserName(
-                    balanceModal
-                  )}
-                </p>
-              </div>
-
-              <button
-                onClick={() =>
-                  setBalanceModal(
-                    null
-                  )
-                }
-                className="text-xl"
+              <p
+                className="text-sm mt-1"
                 style={{
                   color:
                     "#9090a8",
                 }}
               >
-                ×
-              </button>
-
+                {getUserName(
+                  balanceModal
+                )}
+              </p>
             </div>
 
-            <div
-              className="p-4 mb-6"
+            <button
+              onClick={() =>
+                setBalanceModal(
+                  null
+                )}
               style={{
-                background:
-                  "rgba(212,160,23,0.06)",
+                color:
+                  "#9090a8",
               }}
             >
-              <p
-                className="text-xs"
-                style={{
-                  color:
-                    "#9090a8",
-                }}
-              >
-                Current Available Balance
-              </p>
+              <X />
+            </button>
 
+          </div>
+
+          <div
+            className="p-4 mb-5 rounded-xl"
+            style={{
+              background:
+                "rgba(212,160,23,0.06)",
+            }}
+          >
+            <p
+              className="text-xs"
+              style={{
+                color:
+                  "#9090a8",
+              }}
+            >
+              Current Available Balance
+            </p>
+
+            <p
+              className="text-2xl font-black mt-1"
+              style={{
+                color:
+                  "#d4a017",
+              }}
+            >
+              $
+              {formatMoney(
+                balanceModal.available_balance
+              )}
+            </p>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3 mb-5">
+
+            <button
+              onClick={() =>
+                setBalanceDirection(
+                  "ADD"
+                )
+              }
+              className="p-4 border rounded-xl text-left"
+              style={{
+                borderColor:
+                  balanceDirection ===
+                    "ADD"
+                    ? "#d4a017"
+                    : "rgba(255,255,255,0.1)",
+                background:
+                  balanceDirection ===
+                    "ADD"
+                    ? "rgba(212,160,23,0.08)"
+                    : "transparent",
+              }}
+            >
+              <strong>+ Add Funds</strong>
+            </button>
+
+            <button
+              onClick={() =>
+                setBalanceDirection(
+                  "SUBTRACT"
+                )
+              }
+              className="p-4 border rounded-xl text-left"
+              style={{
+                borderColor:
+                  balanceDirection ===
+                    "SUBTRACT"
+                    ? "#ff8b8b"
+                    : "rgba(255,255,255,0.1)",
+                background:
+                  balanceDirection ===
+                    "SUBTRACT"
+                    ? "rgba(255,70,70,0.06)"
+                    : "transparent",
+              }}
+            >
+              <strong>− Reduce Funds</strong>
+            </button>
+
+          </div>
+
+          <input
+            type="number"
+            min="0.01"
+            step="0.01"
+            value={balanceAmount}
+            onChange={(e) =>
+              setBalanceAmount(
+                e.target.value
+              )
+            }
+            placeholder="Amount"
+            className="w-full px-4 py-3 border outline-none mb-4 rounded-xl"
+            style={{
+              background:
+                "#09090e",
+              color:
+                "#f5f0e8",
+              borderColor:
+                "rgba(255,255,255,0.1)",
+            }}
+          />
+
+          <textarea
+            value={balanceReason}
+            onChange={(e) =>
+              setBalanceReason(
+                e.target.value
+              )
+            }
+            placeholder="Reason"
+            rows={4}
+            className="w-full px-4 py-3 border outline-none resize-none rounded-xl mb-6"
+            style={{
+              background:
+                "#09090e",
+              color:
+                "#f5f0e8",
+              borderColor:
+                "rgba(255,255,255,0.1)",
+            }}
+          />
+
+          <div className="flex gap-3">
+
+            <button
+              onClick={() =>
+                setBalanceModal(
+                  null
+                )
+              }
+              className="flex-1 py-3 border rounded-xl font-bold"
+              style={{
+                borderColor:
+                  "rgba(255,255,255,0.1)",
+                color:
+                  "#9090a8",
+              }}
+            >
+              Cancel
+            </button>
+
+            <button
+              onClick={
+                adjustBalance
+              }
+              className="flex-1 py-3 rounded-xl font-bold"
+              style={{
+                background:
+                  balanceDirection ===
+                    "ADD"
+                    ? "#d4a017"
+                    : "#b84b4b",
+                color:
+                  "#09090e",
+              }}
+            >
+              {balanceDirection ===
+                "ADD"
+                ? "Add Funds"
+                : "Reduce Funds"}
+            </button>
+
+          </div>
+        </ModalShell>
+      )}
+
+      {/* =====================================================
+          SUPPORT REPLY MODAL
+      ====================================================== */}
+
+      {selectedSupport && (
+        <ModalShell
+          onClose={() =>
+            setSelectedSupport(
+              null
+            )
+          }
+        >
+          <div className="flex items-start justify-between gap-4 mb-6">
+
+            <div>
               <p
-                className="text-2xl font-black mt-1"
+                className="text-xs uppercase tracking-widest font-bold"
                 style={{
                   color:
                     "#d4a017",
                 }}
               >
-                $
-                {formatMoney(
-                  balanceModal.available_balance
-                )}
+                Support Request
+              </p>
+
+              <h2 className="text-2xl font-black mt-2">
+                {selectedSupport.subject}
+              </h2>
+
+              <p
+                className="text-xs mt-2"
+                style={{
+                  color:
+                    "#777789",
+                }}
+              >
+                {selectedSupport.user_name ||
+                  "Unknown User"}
+                {" • "}
+                {selectedSupport.user_email}
               </p>
             </div>
 
-            <div className="grid grid-cols-2 gap-3 mb-5">
+            <button
+              onClick={() =>
+                setSelectedSupport(
+                  null
+                )
+              }
+              style={{
+                color:
+                  "#9090a8",
+              }}
+            >
+              <X />
+            </button>
 
-              <button
-                onClick={() =>
-                  setBalanceDirection(
-                    "ADD"
-                  )
-                }
-                className="p-4 border text-left"
-                style={{
-                  borderColor:
-                    balanceDirection ===
-                      "ADD"
-                      ? "#d4a017"
-                      : "rgba(255,255,255,0.1)",
+          </div>
 
-                  background:
-                    balanceDirection ===
-                      "ADD"
-                      ? "rgba(212,160,23,0.08)"
-                      : "transparent",
-                }}
-              >
-                <div className="font-bold">
-                  + Add Funds
-                </div>
+          <div
+            className="p-4 rounded-xl mb-5"
+            style={{
+              background:
+                "#0d0d14",
+            }}
+          >
+            <p
+              className="text-xs uppercase tracking-wider mb-2"
+              style={{
+                color:
+                  "#666678",
+              }}
+            >
+              User Message
+            </p>
 
-                <div
-                  className="text-xs mt-1"
-                  style={{
-                    color:
-                      "#9090a8",
-                  }}
-                >
-                  Increase balance
-                </div>
-              </button>
+            <p
+              className="text-sm leading-7 whitespace-pre-wrap"
+              style={{
+                color:
+                  "#c7c2b8",
+              }}
+            >
+              {
+                selectedSupport.message
+              }
+            </p>
+          </div>
 
-              <button
-                onClick={() =>
-                  setBalanceDirection(
-                    "SUBTRACT"
-                  )
-                }
-                className="p-4 border text-left"
-                style={{
-                  borderColor:
-                    balanceDirection ===
-                      "SUBTRACT"
-                      ? "#ff8b8b"
-                      : "rgba(255,255,255,0.1)",
+          <label className="block text-sm font-bold mb-2">
+            Status
+          </label>
 
-                  background:
-                    balanceDirection ===
-                      "SUBTRACT"
-                      ? "rgba(255,70,70,0.06)"
-                      : "transparent",
-                }}
-              >
-                <div className="font-bold">
-                  − Reduce Funds
-                </div>
+          <select
+            value={supportStatus}
+            onChange={(e) =>
+              setSupportStatus(
+                e.target.value as
+                | "OPEN"
+                | "IN_PROGRESS"
+                | "RESOLVED"
+              )
+            }
+            className="w-full px-4 py-3 border outline-none rounded-xl mb-5"
+            style={{
+              background:
+                "#09090e",
+              color:
+                "#f5f0e8",
+              borderColor:
+                "rgba(255,255,255,0.1)",
+            }}
+          >
+            <option value="OPEN">
+              Open
+            </option>
 
-                <div
-                  className="text-xs mt-1"
-                  style={{
-                    color:
-                      "#9090a8",
-                  }}
-                >
-                  Decrease balance
-                </div>
-              </button>
+            <option value="IN_PROGRESS">
+              In Progress
+            </option>
 
+            <option value="RESOLVED">
+              Resolved
+            </option>
+          </select>
+
+          <label className="block text-sm font-bold mb-2">
+            Reply
+          </label>
+
+          <textarea
+            value={supportReply}
+            onChange={(e) =>
+              setSupportReply(
+                e.target.value
+              )
+            }
+            rows={6}
+            placeholder="Write your response to the user..."
+            className="w-full px-4 py-3 border outline-none resize-none rounded-xl"
+            style={{
+              background:
+                "#09090e",
+              color:
+                "#f5f0e8",
+              borderColor:
+                "rgba(212,160,23,0.2)",
+            }}
+          />
+
+          <button
+            onClick={
+              replyToSupport
+            }
+            disabled={
+              replyingSupport
+            }
+            className="w-full mt-5 py-4 rounded-xl font-bold flex items-center justify-center gap-2"
+            style={{
+              background:
+                replyingSupport
+                  ? "#555"
+                  : "#d4a017",
+              color:
+                "#09090e",
+            }}
+          >
+            <MessageSquare
+              size={18}
+            />
+
+            {replyingSupport
+              ? "Sending..."
+              : "Send Reply"}
+          </button>
+        </ModalShell>
+      )}
+
+      {/* =====================================================
+          DELETE USER CONFIRMATION
+      ====================================================== */}
+
+      {deleteUserModal && (
+        <ModalShell
+          onClose={() =>
+            setDeleteUserModal(
+              null
+            )
+          }
+        >
+          <div className="text-center">
+
+            <div
+              className="w-14 h-14 mx-auto rounded-2xl flex items-center justify-center"
+              style={{
+                background:
+                  "rgba(255,70,70,0.1)",
+                color:
+                  "#ff8b8b",
+              }}
+            >
+              <AlertTriangle
+                size={28}
+              />
             </div>
 
-            <label className="block text-sm font-bold mb-2">
-              Amount
-            </label>
+            <h2 className="text-2xl font-black mt-5">
+              Delete User Permanently?
+            </h2>
 
-            <input
-              type="number"
-              min="0.01"
-              step="0.01"
-              value={
-                balanceAmount
-              }
-              onChange={(e) =>
-                setBalanceAmount(
-                  e.target.value
-                )
-              }
-              placeholder="Enter amount"
-              className="w-full px-4 py-3 border mb-5 outline-none"
+            <p
+              className="mt-3 text-sm leading-6"
               style={{
-                background:
-                  "#09090e",
-                borderColor:
-                  "rgba(255,255,255,0.1)",
                 color:
-                  "#f5f0e8",
+                  "#9090a8",
               }}
-            />
+            >
+              You are about to permanently delete{" "}
+              <strong
+                style={{
+                  color:
+                    "#f5f0e8",
+                }}
+              >
+                {getUserName(
+                  deleteUserModal
+                )}
+              </strong>
+              .
+            </p>
 
-            <label className="block text-sm font-bold mb-2">
-              Reason
-            </label>
-
-            <textarea
-              value={
-                balanceReason
-              }
-              onChange={(e) =>
-                setBalanceReason(
-                  e.target.value
-                )
-              }
-              placeholder="Why is this adjustment being made?"
-              rows={3}
-              className="w-full px-4 py-3 border mb-6 outline-none resize-none"
+            <p
+              className="mt-3 text-sm leading-6"
               style={{
-                background:
-                  "#09090e",
-                borderColor:
-                  "rgba(255,255,255,0.1)",
                 color:
-                  "#f5f0e8",
+                  "#ff8b8b",
               }}
-            />
+            >
+              This action is irreversible. The user's account
+              and associated records will be permanently removed.
+            </p>
 
-            {balanceDirection ===
-              "SUBTRACT" && (
-                <div
-                  className="p-3 mb-5 text-xs border"
-                  style={{
-                    color:
-                      "#ffb0b0",
-                    borderColor:
-                      "rgba(255,70,70,0.2)",
-                    background:
-                      "rgba(255,70,70,0.05)",
-                  }}
-                >
-                  The database will prevent this adjustment if it would make the available balance negative.
-                </div>
-              )}
-
-            <div className="flex gap-3">
+            <div className="flex gap-3 mt-7">
 
               <button
-                onClick={() => {
-                  setBalanceModal(
+                onClick={() =>
+                  setDeleteUserModal(
                     null
-                  );
-
-                  setBalanceAmount(
-                    ""
-                  );
-
-                  setBalanceReason(
-                    ""
-                  );
-                }}
-                className="flex-1 px-5 py-3 border font-bold"
+                  )
+                }
+                className="flex-1 py-3 border rounded-xl font-bold"
                 style={{
                   borderColor:
                     "rgba(255,255,255,0.1)",
@@ -3556,36 +4081,76 @@ export default function AdminDashboard() {
 
               <button
                 onClick={
-                  adjustBalance
+                  permanentlyDeleteUser
                 }
                 disabled={
-                  processing ===
-                  balanceModal.id
+                  deletingUser
                 }
-                className="flex-1 px-5 py-3 font-bold"
+                className="flex-1 py-3 rounded-xl font-bold flex items-center justify-center gap-2"
                 style={{
                   background:
-                    balanceDirection ===
-                      "ADD"
-                      ? "#d4a017"
-                      : "#b84b4b",
+                    "#e05050",
                   color:
-                    "#09090e",
+                    "#fff",
                 }}
               >
-                {processing ===
-                  balanceModal.id
-                  ? "Processing..."
-                  : balanceDirection ===
-                    "ADD"
-                    ? "Add Funds"
-                    : "Reduce Funds"}
+                <Trash2
+                  size={17}
+                />
+
+                {deletingUser
+                  ? "Deleting..."
+                  : "Delete Permanently"}
               </button>
 
             </div>
+
           </div>
-        </div>
+        </ModalShell>
       )}
+
+    </div>
+  );
+}
+
+/*
+ * ============================================================
+ * MODAL SHELL
+ * ============================================================
+ */
+
+function ModalShell({
+  children,
+  onClose,
+}: {
+  children: React.ReactNode;
+  onClose: () => void;
+}) {
+  return (
+    <div
+      className="fixed inset-0 z-[100] flex items-center justify-center p-5"
+      style={{
+        background:
+          "rgba(0,0,0,0.78)",
+        backdropFilter:
+          "blur(7px)",
+      }}
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-2xl max-h-[90vh] overflow-y-auto p-6 rounded-2xl border"
+        style={{
+          background:
+            "#111118",
+          borderColor:
+            "rgba(212,160,23,0.2)",
+        }}
+        onClick={(e) =>
+          e.stopPropagation()
+        }
+      >
+        {children}
+      </div>
     </div>
   );
 }
@@ -3607,7 +4172,7 @@ function StatCard({
 }) {
   return (
     <div
-      className="p-5 border rounded-lg"
+      className="p-5 border rounded-xl"
       style={{
         background:
           "#111118",
@@ -3640,7 +4205,7 @@ function StatCard({
         </div>
 
         <div
-          className="w-10 h-10 flex items-center justify-center rounded-lg"
+          className="w-10 h-10 flex items-center justify-center rounded-xl"
           style={{
             background:
               "rgba(212,160,23,0.08)",
@@ -3677,7 +4242,7 @@ function QuickCard({
 }) {
   return (
     <div
-      className="p-6 border rounded-lg"
+      className="p-6 border rounded-xl"
       style={{
         background:
           "#111118",
@@ -3711,7 +4276,7 @@ function QuickCard({
 
       <button
         onClick={action}
-        className="px-5 py-3 text-sm font-bold"
+        className="px-5 py-3 text-sm font-bold rounded-xl"
         style={{
           background:
             "#d4a017",
@@ -3743,14 +4308,12 @@ function StatusBadge({
       color:
         "#71d69a",
     },
-
     SUSPENDED: {
       background:
         "rgba(212,160,23,0.1)",
       color:
         "#d4a017",
     },
-
     DISABLED: {
       background:
         "rgba(220,70,70,0.1)",
@@ -3759,13 +4322,12 @@ function StatusBadge({
     },
   };
 
-  const style =
-    styles[status];
-
   return (
     <span
-      className="inline-flex px-3 py-1 text-xs font-bold"
-      style={style}
+      className="inline-flex px-3 py-1 text-xs font-bold rounded-lg"
+      style={
+        styles[status]
+      }
     >
       {status}
     </span>
@@ -3791,7 +4353,7 @@ function WithdrawalStatus({
 
   return (
     <span
-      className="inline-flex px-3 py-1 text-xs font-bold"
+      className="inline-flex px-3 py-1 text-xs font-bold rounded-lg"
       style={{
         background:
           isPending
@@ -3809,6 +4371,76 @@ function WithdrawalStatus({
       }}
     >
       {status}
+    </span>
+  );
+}
+
+/*
+ * ============================================================
+ * SUPPORT STATUS
+ * ============================================================
+ */
+
+function SupportStatusBadge({
+  status,
+}: {
+  status:
+  | "OPEN"
+  | "IN_PROGRESS"
+  | "RESOLVED";
+}) {
+  if (status === "RESOLVED") {
+    return (
+      <span
+        className="inline-flex items-center gap-1.5 px-3 py-1 text-[10px] font-bold rounded-lg"
+        style={{
+          background:
+            "rgba(93,204,138,0.08)",
+          color:
+            "#5dcc8a",
+        }}
+      >
+        <CheckCircle
+          size={12}
+        />
+        RESOLVED
+      </span>
+    );
+  }
+
+  if (status === "IN_PROGRESS") {
+    return (
+      <span
+        className="inline-flex items-center gap-1.5 px-3 py-1 text-[10px] font-bold rounded-lg"
+        style={{
+          background:
+            "rgba(212,160,23,0.08)",
+          color:
+            "#d4a017",
+        }}
+      >
+        <Clock
+          size={12}
+        />
+        IN PROGRESS
+      </span>
+    );
+  }
+
+  return (
+    <span
+      className="inline-flex items-center gap-1.5 px-3 py-1 text-[10px] font-bold rounded-lg"
+      style={{
+        background:
+          "rgba(80,140,255,0.08)",
+        color:
+          "#8fb8ff",
+      }}
+    >
+      <AlertTriangle
+        size={12}
+      />
+      OPEN
     </span>
   );
 }

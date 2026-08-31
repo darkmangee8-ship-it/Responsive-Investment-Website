@@ -270,6 +270,12 @@ export default function DashboardLayout() {
     const [menuOpen, setMenuOpen] = useState(false);
     const [unreadNotifications, setUnreadNotifications] = useState(0);
 
+    /*
+     * =========================================================
+     * LOAD USER PROFILE
+     * =========================================================
+     */
+
     useEffect(() => {
         let mounted = true;
 
@@ -277,9 +283,10 @@ export default function DashboardLayout() {
             try {
                 const {
                     data: { user },
+                    error: userError,
                 } = await supabase.auth.getUser();
 
-                if (!user) {
+                if (userError || !user) {
                     navigate("/login", { replace: true });
                     return;
                 }
@@ -306,7 +313,9 @@ export default function DashboardLayout() {
 
                 await loadUnreadNotifications(user.id);
 
-                setLoading(false);
+                if (mounted) {
+                    setLoading(false);
+                }
             } catch (error) {
                 console.error("LOAD USER ERROR:", error);
 
@@ -324,17 +333,26 @@ export default function DashboardLayout() {
     }, [navigate]);
 
     /*
-     * Load unread notification count.
+     * =========================================================
+     * NOTIFICATION COUNT
+     * =========================================================
      */
+
     async function loadUnreadNotifications(userId: string) {
         const { count, error } = await supabase
             .from("notifications")
-            .select("id", { count: "exact", head: true })
+            .select("id", {
+                count: "exact",
+                head: true,
+            })
             .eq("user_id", userId)
             .eq("read", false);
 
         if (error) {
-            console.error("NOTIFICATION COUNT ERROR:", error);
+            console.error(
+                "NOTIFICATION COUNT ERROR:",
+                error
+            );
             return;
         }
 
@@ -342,13 +360,16 @@ export default function DashboardLayout() {
     }
 
     /*
-     * Realtime notification updates.
-     *
-     * When a notification is created or marked read,
-     * the badge updates automatically.
+     * =========================================================
+     * REALTIME NOTIFICATIONS
+     * =========================================================
      */
+
     useEffect(() => {
-        let channel: ReturnType<typeof supabase.channel> | null = null;
+        let channel:
+            | ReturnType<typeof supabase.channel>
+            | null = null;
+
         let mounted = true;
 
         async function setupNotifications() {
@@ -359,7 +380,9 @@ export default function DashboardLayout() {
             if (!user || !mounted) return;
 
             channel = supabase
-                .channel(`user-notifications-${user.id}`)
+                .channel(
+                    `user-notifications-${user.id}`
+                )
                 .on(
                     "postgres_changes",
                     {
@@ -381,58 +404,106 @@ export default function DashboardLayout() {
             mounted = false;
 
             if (channel) {
-                supabase.removeChannel(channel);
+                supabase.removeChannel(
+                    channel
+                );
             }
         };
     }, []);
 
     /*
+     * =========================================================
      * REALTIME PRESENCE
-     *
-     * This keeps the logged-in user visible as online
-     * for the admin panel.
+     * =========================================================
      */
+
     useEffect(() => {
-        let presenceChannel: ReturnType<typeof supabase.channel> | null = null;
+        let presenceChannel:
+            | ReturnType<typeof supabase.channel>
+            | null = null;
+
         let cancelled = false;
 
         async function setupPresence() {
-            const {
-                data: { user },
-            } = await supabase.auth.getUser();
+            try {
+                const {
+                    data: { user },
+                } = await supabase.auth.getUser();
 
-            if (!user || cancelled) return;
+                if (!user || cancelled) return;
 
-            presenceChannel = supabase.channel("site-presence", {
-                config: {
-                    presence: {
-                        key: user.id,
-                    },
-                },
-            });
+                presenceChannel =
+                    supabase.channel("site-presence", {
+                        config: {
+                            presence: {
+                                key: user.id,
+                            },
+                        },
+                    });
 
-            presenceChannel
-                .on("presence", { event: "sync" }, () => {
-                    console.log(
-                        "Online users:",
-                        presenceChannel?.presenceState()
+                presenceChannel
+                    .on(
+                        "presence",
+                        { event: "sync" },
+                        () => {
+                            console.log(
+                                "Online users:",
+                                presenceChannel?.presenceState()
+                            );
+                        }
+                    )
+                    .on(
+                        "presence",
+                        { event: "join" },
+                        ({ key }) => {
+                            console.log(
+                                "User came online:",
+                                key
+                            );
+                        }
+                    )
+                    .on(
+                        "presence",
+                        { event: "leave" },
+                        ({ key }) => {
+                            console.log(
+                                "User went offline:",
+                                key
+                            );
+                        }
+                    )
+                    .subscribe(
+                        async (status) => {
+                            if (
+                                status ===
+                                "SUBSCRIBED"
+                            ) {
+                                await presenceChannel?.track(
+                                    {
+                                        user_id:
+                                            user.id,
+
+                                        email:
+                                            user.email ??
+                                            "",
+
+                                        online_at:
+                                            new Date().toISOString(),
+                                    }
+                                );
+
+                                console.log(
+                                    "Presence tracking started."
+                                );
+                            }
+                        }
                     );
-                })
-                .on("presence", { event: "join" }, ({ key }) => {
-                    console.log("User came online:", key);
-                })
-                .on("presence", { event: "leave" }, ({ key }) => {
-                    console.log("User went offline:", key);
-                })
-                .subscribe(async (status) => {
-                    if (status === "SUBSCRIBED") {
-                        await presenceChannel?.track({
-                            user_id: user.id,
-                            email: user.email ?? "",
-                            online_at: new Date().toISOString(),
-                        });
-                    }
-                });
+            } catch (error) {
+                console.error(
+                    "PRESENCE ERROR:",
+                    error
+                );
+            }
         }
 
         setupPresence();
@@ -441,26 +512,52 @@ export default function DashboardLayout() {
             cancelled = true;
 
             if (presenceChannel) {
-                presenceChannel.untrack().catch(() => { });
-                supabase.removeChannel(presenceChannel);
+                presenceChannel
+                    .untrack()
+                    .catch(() => { });
+
+                supabase.removeChannel(
+                    presenceChannel
+                );
             }
         };
     }, []);
+
+    /*
+     * =========================================================
+     * LOGOUT
+     * =========================================================
+     */
 
     async function logout() {
         setMenuOpen(false);
 
         await supabase.auth.signOut();
 
-        navigate("/login", { replace: true });
+        navigate("/login", {
+            replace: true,
+        });
     }
+
+    /*
+     * =========================================================
+     * LOADING
+     * =========================================================
+     */
 
     if (loading) {
         return (
-            <div className="min-h-screen bg-[#09090e] text-[#f5f0e8] flex items-center justify-center">
+            <div
+                className="min-h-screen flex items-center justify-center"
+                style={{
+                    background: "#09090e",
+                    color: "#f5f0e8",
+                }}
+            >
                 <div className="text-center">
+
                     <div
-                        className="w-12 h-12 mx-auto flex items-center justify-center font-black text-lg mb-4"
+                        className="w-12 h-12 mx-auto flex items-center justify-center font-black text-lg mb-4 rounded-xl"
                         style={{
                             background: "#d4a017",
                             color: "#09090e",
@@ -469,15 +566,34 @@ export default function DashboardLayout() {
                         ME
                     </div>
 
-                    <p className="text-sm" style={{ color: "#9090a8" }}>
+                    <p
+                        className="text-sm"
+                        style={{
+                            color: "#9090a8",
+                        }}
+                    >
                         Loading your dashboard...
                     </p>
+
                 </div>
             </div>
         );
     }
 
-    const firstName = profile?.first_name || "User";
+    const firstName =
+        profile?.first_name || "User";
+
+    const initials =
+        `${profile?.first_name?.charAt(0) ?? ""}${profile?.last_name?.charAt(0) ?? ""}`
+            .trim()
+            .toUpperCase() ||
+        firstName.charAt(0).toUpperCase();
+
+    /*
+     * =========================================================
+     * DESKTOP NAVIGATION
+     * =========================================================
+     */
 
     const desktopLinks: NavItem[] = [
         {
@@ -525,7 +641,11 @@ export default function DashboardLayout() {
             to: "/dashboard/profile",
             icon: <UserIcon />,
         },
-
+        {
+            label: "Settings",
+            to: "/dashboard/settings",
+            icon: <SettingsIcon />,
+        },
         {
             label: "Support",
             to: "/dashboard/support",
@@ -533,31 +653,21 @@ export default function DashboardLayout() {
         },
     ];
 
-    const mobileLinks: NavItem[] = [
-        {
-            label: "Home",
-            to: "/dashboard",
-            icon: <GridIcon size={20} />,
-        },
-        {
-            label: "Plans",
-            to: "/dashboard/plans",
-            icon: <PackageIcon size={20} />,
-        },
-        {
-            label: "Invest",
-            to: "/dashboard/investments",
-            icon: <TrendingUpIcon size={20} />,
-        },
-        {
-            label: "Wallet",
-            to: "/dashboard/wallet",
-            icon: <WalletIcon size={20} />,
-        },
-    ];
+    /*
+     * =========================================================
+     * RENDER
+     * =========================================================
+     */
 
     return (
-        <div className="min-h-screen bg-[#09090e] text-[#f5f0e8]">
+        <div
+            className="min-h-screen"
+            style={{
+                background: "#09090e",
+                color: "#f5f0e8",
+            }}
+        >
+
             {/* =====================================================
           DESKTOP SIDEBAR
       ====================================================== */}
@@ -566,14 +676,18 @@ export default function DashboardLayout() {
                 className="fixed left-0 top-0 bottom-0 hidden lg:flex w-[250px] flex-col border-r z-40"
                 style={{
                     background: "#0d0d14",
-                    borderColor: "rgba(255,255,255,0.07)",
+                    borderColor:
+                        "rgba(255,255,255,0.07)",
                 }}
             >
+
                 {/* BRAND */}
+
                 <div
                     className="px-5 py-5 border-b"
                     style={{
-                        borderColor: "rgba(255,255,255,0.07)",
+                        borderColor:
+                            "rgba(255,255,255,0.07)",
                     }}
                 >
                     <NavLink
@@ -607,8 +721,10 @@ export default function DashboardLayout() {
                     </NavLink>
                 </div>
 
-                {/* NAV */}
+                {/* NAVIGATION */}
+
                 <nav className="flex-1 px-3 py-5 overflow-y-auto">
+
                     <p
                         className="px-3 mb-3 text-[10px] uppercase tracking-widest font-semibold"
                         style={{
@@ -618,39 +734,53 @@ export default function DashboardLayout() {
                         Main Menu
                     </p>
 
-                    {desktopLinks.slice(0, 8).map((item) => (
-                        <NavLink
-                            key={item.to}
-                            to={item.to}
-                            end={item.to === "/dashboard"}
-                            className="relative flex items-center gap-3 px-3 py-3 mb-1 rounded-xl text-sm transition-all"
-                            style={({ isActive }) => ({
-                                background: isActive
-                                    ? "rgba(212,160,23,0.12)"
-                                    : "transparent",
-                                color: isActive ? "#d4a017" : "#8d8d9e",
-                            })}
-                        >
-                            {item.icon}
+                    {desktopLinks.slice(0, 8).map(
+                        (item) => (
+                            <NavLink
+                                key={item.to}
+                                to={item.to}
+                                end={item.to === "/dashboard"}
+                                className="relative flex items-center gap-3 px-3 py-3 mb-1 rounded-xl text-sm transition-all"
+                                style={({ isActive }) => ({
+                                    background:
+                                        isActive
+                                            ? "rgba(212,160,23,0.12)"
+                                            : "transparent",
 
-                            <span>{item.label}</span>
+                                    color:
+                                        isActive
+                                            ? "#d4a017"
+                                            : "#8d8d9e",
+                                })}
+                            >
+                                {item.icon}
 
-                            {item.label === "Notifications" &&
-                                unreadNotifications > 0 && (
-                                    <span
-                                        className="ml-auto min-w-5 h-5 px-1 rounded-full flex items-center justify-center text-[10px] font-bold"
-                                        style={{
-                                            background: "#d4a017",
-                                            color: "#09090e",
-                                        }}
-                                    >
-                                        {unreadNotifications > 99
-                                            ? "99+"
-                                            : unreadNotifications}
-                                    </span>
-                                )}
-                        </NavLink>
-                    ))}
+                                <span>
+                                    {item.label}
+                                </span>
+
+                                {item.label ===
+                                    "Notifications" &&
+                                    unreadNotifications >
+                                    0 && (
+                                        <span
+                                            className="ml-auto min-w-5 h-5 px-1 rounded-full flex items-center justify-center text-[10px] font-bold"
+                                            style={{
+                                                background:
+                                                    "#d4a017",
+                                                color:
+                                                    "#09090e",
+                                            }}
+                                        >
+                                            {unreadNotifications >
+                                                99
+                                                ? "99+"
+                                                : unreadNotifications}
+                                        </span>
+                                    )}
+                            </NavLink>
+                        )
+                    )}
 
                     <p
                         className="px-3 mt-7 mb-3 text-[10px] uppercase tracking-widest font-semibold"
@@ -661,44 +791,61 @@ export default function DashboardLayout() {
                         Account
                     </p>
 
-                    {desktopLinks.slice(8).map((item) => (
-                        <NavLink
-                            key={item.to}
-                            to={item.to}
-                            className="flex items-center gap-3 px-3 py-3 mb-1 rounded-xl text-sm transition-all"
-                            style={({ isActive }) => ({
-                                background: isActive
-                                    ? "rgba(212,160,23,0.12)"
-                                    : "transparent",
-                                color: isActive ? "#d4a017" : "#8d8d9e",
-                            })}
-                        >
-                            {item.icon}
+                    {desktopLinks.slice(8).map(
+                        (item) => (
+                            <NavLink
+                                key={item.to}
+                                to={item.to}
+                                className="flex items-center gap-3 px-3 py-3 mb-1 rounded-xl text-sm transition-all"
+                                style={({
+                                    isActive,
+                                }) => ({
+                                    background:
+                                        isActive
+                                            ? "rgba(212,160,23,0.12)"
+                                            : "transparent",
 
-                            <span>{item.label}</span>
-                        </NavLink>
-                    ))}
+                                    color:
+                                        isActive
+                                            ? "#d4a017"
+                                            : "#8d8d9e",
+                                })}
+                            >
+                                {item.icon}
+
+                                <span>
+                                    {item.label}
+                                </span>
+                            </NavLink>
+                        )
+                    )}
+
                 </nav>
 
                 {/* USER */}
+
                 <div
                     className="p-4 border-t"
                     style={{
-                        borderColor: "rgba(255,255,255,0.07)",
+                        borderColor:
+                            "rgba(255,255,255,0.07)",
                     }}
                 >
                     <div className="flex items-center gap-3">
+
                         <div
                             className="w-9 h-9 rounded-full flex items-center justify-center font-bold"
                             style={{
-                                background: "rgba(212,160,23,0.13)",
+                                background:
+                                    "rgba(212,160,23,0.13)",
                                 color: "#d4a017",
                             }}
                         >
-                            {firstName.charAt(0).toUpperCase()}
+                            {initials}
                         </div>
 
                         <div className="min-w-0 flex-1">
+
                             <p className="text-sm font-semibold truncate">
                                 {firstName}
                             </p>
@@ -711,7 +858,9 @@ export default function DashboardLayout() {
                             >
                                 {profile?.email}
                             </p>
+
                         </div>
+
                     </div>
 
                     <button
@@ -719,12 +868,15 @@ export default function DashboardLayout() {
                         className="w-full mt-3 px-3 py-2.5 rounded-lg text-left text-xs"
                         style={{
                             color: "#777789",
-                            background: "rgba(255,255,255,0.025)",
+                            background:
+                                "rgba(255,255,255,0.025)",
                         }}
                     >
                         Sign out
                     </button>
+
                 </div>
+
             </aside>
 
             {/* =====================================================
@@ -732,328 +884,447 @@ export default function DashboardLayout() {
       ====================================================== */}
 
             <main className="lg:ml-[250px] min-h-screen">
-                {/* TOP HEADER */}
+
+                {/* ===================================================
+            MOBILE / DESKTOP TOP BAR
+        ==================================================== */}
+
                 <header
                     className="h-[68px] px-4 sm:px-6 lg:px-8 flex items-center justify-between border-b sticky top-0 z-30"
                     style={{
-                        background: "rgba(9,9,14,0.94)",
-                        borderColor: "rgba(255,255,255,0.07)",
-                        backdropFilter: "blur(14px)",
+                        background:
+                            "rgba(9,9,14,0.94)",
+                        borderColor:
+                            "rgba(255,255,255,0.07)",
+                        backdropFilter:
+                            "blur(14px)",
                     }}
                 >
-                    {/* MOBILE BRAND */}
-                    <div className="lg:hidden flex items-center gap-3">
-                        <div
-                            className="w-9 h-9 rounded-lg flex items-center justify-center text-xs font-black"
+
+                    {/* LEFT SIDE */}
+
+                    <div className="flex items-center gap-3">
+
+                        {/* MOBILE MENU BUTTON */}
+
+                        <button
+                            type="button"
+                            onClick={() =>
+                                setMenuOpen(true)
+                            }
+                            className="lg:hidden w-10 h-10 rounded-xl flex items-center justify-center"
                             style={{
-                                background: "#d4a017",
-                                color: "#09090e",
+                                background:
+                                    "rgba(255,255,255,0.05)",
+                                color: "#d4a017",
                             }}
+                            aria-label="Open dashboard menu"
                         >
-                            ME
-                        </div>
+                            <MenuIcon size={22} />
+                        </button>
 
-                        <div>
-                            <p className="text-sm font-bold">
-                                Musk Enterprise
-                            </p>
+                        {/* MOBILE BRAND */}
 
-                            <p
-                                className="text-[9px]"
+                        <div className="lg:hidden flex items-center gap-2">
+                            <div
+                                className="w-8 h-8 rounded-lg flex items-center justify-center text-[10px] font-black"
                                 style={{
-                                    color: "#686878",
+                                    background:
+                                        "#d4a017",
+                                    color:
+                                        "#09090e",
                                 }}
                             >
-                                Member Portal
-                            </p>
+                                ME
+                            </div>
+
+                            <div>
+                                <p className="text-sm font-bold">
+                                    Musk Enterprise
+                                </p>
+
+                                <p
+                                    className="text-[9px]"
+                                    style={{
+                                        color:
+                                            "#686878",
+                                    }}
+                                >
+                                    Member Portal
+                                </p>
+                            </div>
                         </div>
+
+                        {/* DESKTOP TITLE */}
+
+                        <div className="hidden lg:flex items-center gap-2">
+
+                            <span
+                                className="w-2 h-2 rounded-full"
+                                style={{
+                                    background:
+                                        "#5dcc8a",
+                                    boxShadow:
+                                        "0 0 8px rgba(93,204,138,0.6)",
+                                }}
+                            />
+
+                            <span
+                                className="text-sm"
+                                style={{
+                                    color:
+                                        "#777789",
+                                }}
+                            >
+                                Member Dashboard
+                            </span>
+
+                        </div>
+
                     </div>
 
-                    {/* DESKTOP TITLE */}
-                    <div
-                        className="hidden lg:block text-sm"
-                        style={{
-                            color: "#777789",
-                        }}
-                    >
-                        Member Dashboard
-                    </div>
+                    {/* RIGHT SIDE */}
 
                     <div className="flex items-center gap-2">
-                        {/* NOTIFICATIONS */}
+
+                        {/* NOTIFICATION */}
+
                         <NavLink
                             to="/dashboard/notifications"
                             className="relative w-10 h-10 rounded-xl flex items-center justify-center"
                             style={{
                                 color: "#a0a0b0",
-                                background: "rgba(255,255,255,0.035)",
+                                background:
+                                    "rgba(255,255,255,0.035)",
                             }}
                             aria-label="Notifications"
                         >
                             <BellIcon size={20} />
 
-                            {unreadNotifications > 0 && (
-                                <span
-                                    className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full flex items-center justify-center text-[9px] font-bold"
-                                    style={{
-                                        background: "#d4a017",
-                                        color: "#09090e",
-                                        border: "2px solid #09090e",
-                                    }}
-                                >
-                                    {unreadNotifications > 99
-                                        ? "99+"
-                                        : unreadNotifications}
-                                </span>
-                            )}
+                            {unreadNotifications >
+                                0 && (
+                                    <span
+                                        className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full flex items-center justify-center text-[9px] font-bold"
+                                        style={{
+                                            background:
+                                                "#d4a017",
+                                            color:
+                                                "#09090e",
+                                            border:
+                                                "2px solid #09090e",
+                                        }}
+                                    >
+                                        {unreadNotifications >
+                                            99
+                                            ? "99+"
+                                            : unreadNotifications}
+                                    </span>
+                                )}
                         </NavLink>
 
                         {/* PROFILE */}
+
                         <NavLink
                             to="/dashboard/profile"
                             aria-label="Open profile"
                             className="w-10 h-10 rounded-xl flex items-center justify-center"
                             style={{
-                                background: "#d4a017",
-                                color: "#09090e",
+                                background:
+                                    "#d4a017",
+                                color:
+                                    "#09090e",
                             }}
                         >
-                            {firstName.charAt(0).toUpperCase()}
+                            {initials}
                         </NavLink>
 
-                        {/* MOBILE MENU */}
-                        <button
-                            type="button"
-                            onClick={() => setMenuOpen(true)}
-                            className="lg:hidden w-10 h-10 rounded-xl flex items-center justify-center"
-                            style={{
-                                color: "#a0a0b0",
-                                background: "rgba(255,255,255,0.035)",
-                            }}
-                            aria-label="Open menu"
-                        >
-                            <MenuIcon />
-                        </button>
                     </div>
+
                 </header>
 
-                {/* CONTENT */}
-                <div className="px-4 sm:px-6 lg:px-8 py-6 lg:py-9 max-w-[1500px] pb-24 lg:pb-10">
+                {/* PAGE CONTENT */}
+
+                <div className="px-4 sm:px-6 lg:px-8 py-6 lg:py-9 max-w-[1500px] pb-10">
                     <Outlet />
                 </div>
+
             </main>
 
             {/* =====================================================
-          MOBILE BOTTOM NAV
-      ====================================================== */}
-
-            <nav
-                className="lg:hidden fixed bottom-0 left-0 right-0 z-40 border-t"
-                style={{
-                    background: "rgba(13,13,20,0.97)",
-                    borderColor: "rgba(255,255,255,0.08)",
-                    backdropFilter: "blur(16px)",
-                }}
-            >
-                <div className="grid grid-cols-5 px-2 py-2">
-                    {mobileLinks.map((item) => (
-                        <NavLink
-                            key={item.to}
-                            to={item.to}
-                            end={item.to === "/dashboard"}
-                            className="relative flex flex-col items-center justify-center gap-1 py-2 rounded-xl"
-                            style={({ isActive }) => ({
-                                color: isActive ? "#d4a017" : "#6f6f80",
-                            })}
-                        >
-                            {item.icon}
-
-                            <span className="text-[10px] font-medium">
-                                {item.label}
-                            </span>
-                        </NavLink>
-                    ))}
-
-                    {/* MENU */}
-                    <button
-                        type="button"
-                        onClick={() => setMenuOpen(true)}
-                        className="flex flex-col items-center justify-center gap-1 py-2 rounded-xl"
-                        style={{
-                            color: "#6f6f80",
-                        }}
-                    >
-                        <MenuIcon size={20} />
-
-                        <span className="text-[10px] font-medium">
-                            Menu
-                        </span>
-                    </button>
-                </div>
-            </nav>
-
-            {/* =====================================================
-          MOBILE MENU OVERLAY
+          MOBILE SLIDE-OUT MENU
       ====================================================== */}
 
             {menuOpen && (
-                <div className="fixed inset-0 z-[100] lg:hidden">
-                    {/* BACKDROP */}
+                <div
+                    className="fixed inset-0 z-[100] lg:hidden"
+                >
+
+                    {/* DARK BACKDROP */}
+
                     <button
                         type="button"
+                        onClick={() =>
+                            setMenuOpen(false)
+                        }
                         aria-label="Close menu"
-                        onClick={() => setMenuOpen(false)}
                         className="absolute inset-0 w-full h-full"
                         style={{
-                            background: "rgba(0,0,0,0.65)",
-                            backdropFilter: "blur(5px)",
+                            background:
+                                "rgba(0,0,0,0.65)",
+                            backdropFilter:
+                                "blur(4px)",
                         }}
                     />
 
-                    {/* MENU PANEL */}
-                    <div
-                        className="absolute left-0 right-0 bottom-0 rounded-t-[24px] p-5 pb-8 border-t"
+                    {/* SLIDE-OUT PANEL */}
+
+                    <aside
+                        className="absolute left-0 top-0 bottom-0 w-[82%] max-w-[320px] flex flex-col border-r"
                         style={{
-                            background: "#111118",
-                            borderColor: "rgba(212,160,23,0.15)",
+                            background:
+                                "#0d0d14",
+                            borderColor:
+                                "rgba(212,160,23,0.15)",
+                            boxShadow:
+                                "20px 0 60px rgba(0,0,0,0.35)",
+                            animation:
+                                "slideInFromLeft 220ms ease-out",
                         }}
                     >
-                        {/* HANDLE */}
+
+                        {/* MENU HEADER */}
+
                         <div
-                            className="w-10 h-1 rounded-full mx-auto mb-5"
+                            className="px-5 py-5 border-b"
                             style={{
-                                background: "rgba(255,255,255,0.15)",
+                                borderColor:
+                                    "rgba(255,255,255,0.07)",
                             }}
-                        />
+                        >
 
-                        <div className="flex items-center justify-between mb-5">
-                            <div>
-                                <h2 className="text-lg font-bold">
-                                    Menu
-                                </h2>
+                            <div className="flex items-center justify-between">
 
-                                <p
-                                    className="text-xs mt-1"
+                                <NavLink
+                                    to="/dashboard"
+                                    onClick={() =>
+                                        setMenuOpen(false)
+                                    }
+                                    className="flex items-center gap-3"
+                                >
+                                    <div
+                                        className="w-10 h-10 rounded-xl flex items-center justify-center font-black"
+                                        style={{
+                                            background:
+                                                "#d4a017",
+                                            color:
+                                                "#09090e",
+                                        }}
+                                    >
+                                        ME
+                                    </div>
+
+                                    <div>
+                                        <p className="font-bold text-sm">
+                                            Musk Enterprise
+                                        </p>
+
+                                        <p
+                                            className="text-[10px] uppercase tracking-widest mt-0.5"
+                                            style={{
+                                                color:
+                                                    "#6f6f80",
+                                            }}
+                                        >
+                                            Member Portal
+                                        </p>
+                                    </div>
+                                </NavLink>
+
+                                <button
+                                    type="button"
+                                    onClick={() =>
+                                        setMenuOpen(false)
+                                    }
+                                    className="w-9 h-9 rounded-xl flex items-center justify-center"
                                     style={{
-                                        color: "#6f6f80",
+                                        background:
+                                            "rgba(255,255,255,0.05)",
+                                        color:
+                                            "#9999a8",
+                                    }}
+                                    aria-label="Close menu"
+                                >
+                                    <XIcon size={19} />
+                                </button>
+
+                            </div>
+
+                        </div>
+
+                        {/* MOBILE NAVIGATION */}
+
+                        <nav className="flex-1 overflow-y-auto px-3 py-5">
+
+                            <p
+                                className="px-3 mb-3 text-[10px] uppercase tracking-widest font-semibold"
+                                style={{
+                                    color:
+                                        "#555563",
+                                }}
+                            >
+                                Navigation
+                            </p>
+
+                            {desktopLinks.map(
+                                (item) => (
+                                    <NavLink
+                                        key={
+                                            item.to
+                                        }
+                                        to={
+                                            item.to
+                                        }
+                                        end={
+                                            item.to ===
+                                            "/dashboard"
+                                        }
+                                        onClick={() =>
+                                            setMenuOpen(
+                                                false
+                                            )
+                                        }
+                                        className="flex items-center gap-3 px-3 py-3.5 mb-1 rounded-xl text-sm"
+                                        style={({
+                                            isActive,
+                                        }) => ({
+                                            background:
+                                                isActive
+                                                    ? "rgba(212,160,23,0.12)"
+                                                    : "transparent",
+
+                                            color:
+                                                isActive
+                                                    ? "#d4a017"
+                                                    : "#8d8d9e",
+                                        })}
+                                    >
+
+                                        {item.icon}
+
+                                        <span className="flex-1">
+                                            {
+                                                item.label
+                                            }
+                                        </span>
+
+                                        {item.label ===
+                                            "Notifications" &&
+                                            unreadNotifications >
+                                            0 && (
+                                                <span
+                                                    className="min-w-5 h-5 px-1 rounded-full flex items-center justify-center text-[10px] font-bold"
+                                                    style={{
+                                                        background:
+                                                            "#d4a017",
+                                                        color:
+                                                            "#09090e",
+                                                    }}
+                                                >
+                                                    {unreadNotifications >
+                                                        99
+                                                        ? "99+"
+                                                        : unreadNotifications}
+                                                </span>
+                                            )}
+
+                                    </NavLink>
+                                )
+                            )}
+
+                        </nav>
+
+                        {/* USER / LOGOUT */}
+
+                        <div
+                            className="p-4 border-t"
+                            style={{
+                                borderColor:
+                                    "rgba(255,255,255,0.07)",
+                            }}
+                        >
+
+                            <div className="flex items-center gap-3">
+
+                                <div
+                                    className="w-10 h-10 rounded-xl flex items-center justify-center font-black"
+                                    style={{
+                                        background:
+                                            "rgba(212,160,23,0.13)",
+                                        color:
+                                            "#d4a017",
                                     }}
                                 >
-                                    Account & more
-                                </p>
+                                    {initials}
+                                </div>
+
+                                <div className="min-w-0 flex-1">
+
+                                    <p className="text-sm font-bold truncate">
+                                        {firstName}
+                                    </p>
+
+                                    <p
+                                        className="text-xs truncate mt-0.5"
+                                        style={{
+                                            color:
+                                                "#666676",
+                                        }}
+                                    >
+                                        {profile?.email}
+                                    </p>
+
+                                </div>
+
                             </div>
 
                             <button
                                 type="button"
-                                onClick={() => setMenuOpen(false)}
-                                className="w-9 h-9 rounded-full flex items-center justify-center"
+                                onClick={logout}
+                                className="w-full mt-4 flex items-center justify-center gap-2 px-4 py-3 rounded-xl text-sm font-semibold"
                                 style={{
-                                    background: "rgba(255,255,255,0.05)",
-                                    color: "#9999a8",
+                                    background:
+                                        "rgba(255,70,70,0.07)",
+                                    border:
+                                        "1px solid rgba(255,70,70,0.12)",
+                                    color:
+                                        "#ff8b8b",
                                 }}
                             >
-                                <XIcon size={19} />
+                                Sign out
                             </button>
+
                         </div>
 
-                        {/* MENU ITEMS */}
-                        <div className="grid grid-cols-2 gap-2">
-                            {desktopLinks.slice(1, 8).map((item) => (
-                                <NavLink
-                                    key={item.to}
-                                    to={item.to}
-                                    onClick={() => setMenuOpen(false)}
-                                    className="flex items-center gap-3 p-4 rounded-xl"
-                                    style={{
-                                        background: "rgba(255,255,255,0.035)",
-                                        color: "#a0a0b0",
-                                    }}
-                                >
-                                    {item.icon}
+                    </aside>
 
-                                    <span className="text-sm font-medium">
-                                        {item.label}
-                                    </span>
+                    {/* SLIDE ANIMATION */}
 
-                                    {item.label === "Notifications" &&
-                                        unreadNotifications > 0 && (
-                                            <span
-                                                className="ml-auto min-w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-bold"
-                                                style={{
-                                                    background: "#d4a017",
-                                                    color: "#09090e",
-                                                }}
-                                            >
-                                                {unreadNotifications}
-                                            </span>
-                                        )}
-                                </NavLink>
-                            ))}
+                    <style>
+                        {`
+              @keyframes slideInFromLeft {
+                from {
+                  transform: translateX(-100%);
+                }
+                to {
+                  transform: translateX(0);
+                }
+              }
+            `}
+                    </style>
 
-                            <NavLink
-                                to="/dashboard/profile"
-                                onClick={() => setMenuOpen(false)}
-                                className="flex items-center gap-3 p-4 rounded-xl"
-                                style={{
-                                    background: "rgba(255,255,255,0.035)",
-                                    color: "#a0a0b0",
-                                }}
-                            >
-                                <UserIcon />
-
-                                <span className="text-sm font-medium">
-                                    Profile
-                                </span>
-                            </NavLink>
-
-                            <NavLink
-                                to="/dashboard/settings"
-                                onClick={() => setMenuOpen(false)}
-                                className="flex items-center gap-3 p-4 rounded-xl"
-                                style={{
-                                    background: "rgba(255,255,255,0.035)",
-                                    color: "#a0a0b0",
-                                }}
-                            >
-                                <SettingsIcon />
-
-                                <span className="text-sm font-medium">
-                                    Settings
-                                </span>
-                            </NavLink>
-
-                            <NavLink
-                                to="/dashboard/support"
-                                onClick={() => setMenuOpen(false)}
-                                className="flex items-center gap-3 p-4 rounded-xl"
-                                style={{
-                                    background: "rgba(255,255,255,0.035)",
-                                    color: "#a0a0b0",
-                                }}
-                            >
-                                <HeadphoneIcon />
-
-                                <span className="text-sm font-medium">
-                                    Support
-                                </span>
-                            </NavLink>
-                        </div>
-
-                        {/* SIGN OUT */}
-                        <button
-                            type="button"
-                            onClick={logout}
-                            className="w-full mt-4 py-3.5 rounded-xl text-sm font-semibold"
-                            style={{
-                                background: "rgba(255,70,70,0.07)",
-                                color: "#ff8b8b",
-                                border: "1px solid rgba(255,70,70,0.12)",
-                            }}
-                        >
-                            Sign out
-                        </button>
-                    </div>
                 </div>
             )}
+
         </div>
     );
 }

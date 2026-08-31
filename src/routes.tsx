@@ -29,43 +29,38 @@ import Withdraw from "./pages/dashboard/Withdraw";
 import Transactions from "./pages/dashboard/Transactions";
 import Notifications from "./pages/dashboard/Notifications";
 import Profile from "./pages/dashboard/Profile";
-import Settings from "./pages/dashboard/Settings";
 import Support from "./pages/dashboard/Support";
 
 export const router = createBrowserRouter([
   /*
-   * ==========================================================
-   * SPLASH / ONBOARDING
-   * ==========================================================
+   * SPLASH
    */
-
   {
     path: "/",
     element: <Splash />,
   },
 
+  /*
+   * ONBOARDING
+   */
   {
     path: "/onboarding",
     element: <Onboarding />,
   },
 
   /*
-   * ==========================================================
    * ADMIN
-   * ==========================================================
    */
-
   {
     path: "/admin",
     element: <AdminDashboard />,
   },
 
   /*
-   * ==========================================================
    * PUBLIC WEBSITE
-   * ==========================================================
+   *
+   * Existing public website is available at /home.
    */
-
   {
     path: "/home",
     element: <Layout />,
@@ -74,52 +69,42 @@ export const router = createBrowserRouter([
         index: true,
         element: <Home />,
       },
-
       {
         path: "plans",
         element: <Plans />,
       },
-
       {
         path: "about",
         element: <About />,
       },
-
       {
         path: "how-it-works",
         element: <HowItWorks />,
       },
-
       {
         path: "faq",
         element: <FAQ />,
       },
-
       {
         path: "contact",
         element: <Contact />,
       },
-
       {
         path: "login",
         element: <Login />,
       },
-
       {
         path: "register",
         element: <Register />,
       },
-
       {
         path: "terms",
         element: <Terms />,
       },
-
       {
         path: "privacy",
         element: <Privacy />,
       },
-
       {
         path: "risk-disclosure",
         element: <RiskDisclosure />,
@@ -128,25 +113,20 @@ export const router = createBrowserRouter([
   },
 
   /*
-   * Keep these direct URLs working.
+   * DIRECT AUTH ROUTES
    */
-
   {
     path: "/login",
     element: <Login />,
   },
-
   {
     path: "/register",
     element: <Register />,
   },
 
   /*
-   * ==========================================================
    * USER DASHBOARD
-   * ==========================================================
    */
-
   {
     path: "/dashboard",
     element: <DashboardLayout />,
@@ -155,52 +135,38 @@ export const router = createBrowserRouter([
         index: true,
         element: <Dashboard />,
       },
-
-      {
-        path: "wallet",
-        element: <Wallet />,
-      },
-
       {
         path: "plans",
         element: <DashboardPlans />,
       },
-
       {
         path: "investments",
         element: <Investments />,
       },
-
+      {
+        path: "wallet",
+        element: <Wallet />,
+      },
       {
         path: "deposit",
         element: <Deposit />,
       },
-
       {
         path: "withdraw",
         element: <Withdraw />,
       },
-
       {
         path: "transactions",
         element: <Transactions />,
       },
-
       {
         path: "notifications",
         element: <Notifications />,
       },
-
       {
         path: "profile",
         element: <Profile />,
       },
-
-      {
-        path: "settings",
-        element: <Settings />,
-      },
-
       {
         path: "support",
         element: <Support />,
