@@ -1,9 +1,43 @@
-
 import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router";
 import { supabase } from "../../lib/supabase";
 
-type PaymentMethod = "bank_transfer" | "bitcoin";
+type PaymentMethod =
+  | "bitcoin"
+  | "usdt"
+  | "usdc"
+  | "ethereum";
+
+const cryptoDetails = {
+  bitcoin: {
+    name: "Bitcoin",
+    symbol: "BTC",
+    icon: "₿",
+    address: "bc1q9wkkmuna70ulurfmr634z6wvq3atv4s52pgpe7",
+    network: "Bitcoin",
+  },
+  usdt: {
+    name: "Tether",
+    symbol: "USDT",
+    icon: "₮",
+    address: "bc1q9wkkmuna70ulurfmr634z6wvq3atv4s52pgpe7",
+    network: "TRC20",
+  },
+  usdc: {
+    name: "USD Coin",
+    symbol: "USDC",
+    icon: "$",
+    address: "bc1q9wkkmuna70ulurfmr634z6wvq3atv4s52pgpe7",
+    network: "Ethereum",
+  },
+  ethereum: {
+    name: "Ethereum",
+    symbol: "ETH",
+    icon: "Ξ",
+    address: "bc1q9wkkmuna70ulurfmr634z6wvq3atv4s52pgpe7",
+    network: "Ethereum",
+  },
+};
 
 export default function Deposit() {
   const navigate = useNavigate();
@@ -11,18 +45,12 @@ export default function Deposit() {
   const [amount, setAmount] = useState("");
   const [reference, setReference] = useState("");
   const [method, setMethod] =
-    useState<PaymentMethod>("bank_transfer");
+    useState<PaymentMethod>("bitcoin");
 
   const [loading, setLoading] = useState(false);
-  const [message, setMessage] = useState("");
+  const [message, setMessage] = useState(false);
   const [error, setError] = useState("");
   const [copied, setCopied] = useState("");
-
-  const btcAddress =
-    "bc1q9wkkmuna70ulurfmr634z6wvq3atv4s52pgpe7";
-  const bankName = "Opay";
-  const accountName = "Tohbi Gnf";
-  const accountNumber = "7084227994";
 
   useEffect(() => {
     checkUser();
@@ -38,46 +66,50 @@ export default function Deposit() {
     }
   }
 
-  async function copyToClipboard(text: string, identifier: string) {
+  async function copyToClipboard(
+    text: string,
+    identifier: string
+  ) {
+    if (!text) return;
+
     try {
-      // Modern Clipboard API
       if (
         navigator.clipboard &&
         window.isSecureContext
       ) {
         await navigator.clipboard.writeText(text);
-        setCopied(identifier);
-        setTimeout(() => setCopied(""), 2000);
-        return;
-      }
-
-      // Fallback for browsers where Clipboard API is unavailable
-      const textarea = document.createElement("textarea");
-
-      textarea.value = text;
-      textarea.style.position = "fixed";
-      textarea.style.left = "-9999px";
-      textarea.style.top = "0";
-
-      document.body.appendChild(textarea);
-
-      textarea.focus();
-      textarea.select();
-
-      const successful = document.execCommand("copy");
-
-      document.body.removeChild(textarea);
-
-      if (successful) {
-        setCopied(identifier);
-        setTimeout(() => setCopied(""), 2000);
       } else {
-        throw new Error("Copy command failed");
+        const textarea =
+          document.createElement("textarea");
+
+        textarea.value = text;
+        textarea.style.position = "fixed";
+        textarea.style.left = "-9999px";
+
+        document.body.appendChild(textarea);
+        textarea.focus();
+        textarea.select();
+
+        const successful =
+          document.execCommand("copy");
+
+        document.body.removeChild(textarea);
+
+        if (!successful) {
+          throw new Error("Copy failed");
+        }
       }
+
+      setCopied(identifier);
+
+      setTimeout(() => {
+        setCopied("");
+      }, 2000);
     } catch (err) {
       console.error("COPY ERROR:", err);
-      setError("Unable to copy. Please copy it manually.");
-      setMessage("");
+      setError(
+        "Unable to copy. Please copy the address manually."
+      );
     }
   }
 
@@ -91,33 +123,40 @@ export default function Deposit() {
     return `$${value.toLocaleString("en-US", {
       minimumFractionDigits: 2,
       maximumFractionDigits: 2,
-    })
-      } `;
+    })}`;
   }
 
-  async function submitDeposit(e: React.FormEvent) {
+  function selectedCrypto() {
+    return cryptoDetails[method];
+  }
+
+  async function submitDeposit(
+    e: React.FormEvent
+  ) {
     e.preventDefault();
 
     setError("");
-    setMessage("");
+    setMessage(false);
 
     const numericAmount = Number(amount);
 
     if (!numericAmount || numericAmount <= 0) {
-      setError("Please enter a valid deposit amount.");
+      setError(
+        "Please enter a valid deposit amount."
+      );
       return;
     }
 
     if (numericAmount < 10) {
-      setError("Minimum deposit amount is $10.");
+      setError(
+        "Minimum deposit amount is $10."
+      );
       return;
     }
 
     if (!reference.trim()) {
       setError(
-        method === "bank_transfer"
-          ? "Please enter your bank transfer reference."
-          : "Please enter your Bitcoin transaction ID/hash."
+        `Please enter your ${selectedCrypto().name} transaction ID / hash.`
       );
       return;
     }
@@ -134,16 +173,18 @@ export default function Deposit() {
         return;
       }
 
-      const { error: depositError } = await supabase
-        .from("deposits")
-        .insert({
-          user_id: user.id,
-          amount: numericAmount,
-          currency: "USD",
-          provider: method,
-          provider_reference: reference.trim(),
-          status: "PENDING",
-        });
+      const { error: depositError } =
+        await supabase
+          .from("deposits")
+          .insert({
+            user_id: user.id,
+            amount: numericAmount,
+            currency: "USD",
+            provider: method,
+            provider_reference:
+              reference.trim(),
+            status: "PENDING",
+          });
 
       if (depositError) {
         console.error(
@@ -154,7 +195,7 @@ export default function Deposit() {
         setError(
           `Unable to submit deposit: ${depositError.message ||
           "Unknown database error"
-          } `
+          }`
         );
 
         return;
@@ -162,12 +203,13 @@ export default function Deposit() {
 
       setAmount("");
       setReference("");
-
-      setMessage(
-        "Deposit submitted successfully. Your transfer will be reviewed before your wallet is credited."
-      );
+      setMessage(true);
     } catch (err) {
-      console.error(err);
+      console.error(
+        "DEPOSIT ERROR:",
+        err
+      );
+
       setError(
         "Something went wrong. Please try again."
       );
@@ -175,6 +217,8 @@ export default function Deposit() {
       setLoading(false);
     }
   }
+
+  const crypto = selectedCrypto();
 
   return (
     <div className="pb-24">
@@ -198,8 +242,8 @@ export default function Deposit() {
           className="mt-2 text-sm leading-6"
           style={{ color: "#9090a8" }}
         >
-          Fund your wallet using Bitcoin or bank
-          transfer.
+          Fund your wallet securely using
+          cryptocurrency.
         </p>
 
       </div>
@@ -211,118 +255,73 @@ export default function Deposit() {
         <section>
 
           <h2 className="text-lg font-bold mb-3">
-            Choose Payment Method
+            Choose Cryptocurrency
           </h2>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
 
-            {/* BANK */}
+            {(
+              Object.keys(
+                cryptoDetails
+              ) as PaymentMethod[]
+            ).map((cryptoKey) => {
 
-            <button
-              type="button"
-              onClick={() => {
-                setMethod("bank_transfer");
-                setReference("");
-                setError("");
-              }}
-              className="text-left p-5 border transition-all"
-              style={{
-                background:
-                  method === "bank_transfer"
-                    ? "rgba(212,160,23,0.08)"
-                    : "#111118",
-                borderColor:
-                  method === "bank_transfer"
-                    ? "#d4a017"
-                    : "rgba(212,160,23,0.15)",
-              }}
-            >
+              const item =
+                cryptoDetails[cryptoKey];
 
-              <div className="flex items-center gap-3">
+              const active =
+                method === cryptoKey;
 
-                <div
-                  className="w-11 h-11 flex items-center justify-center text-xl"
+              return (
+                <button
+                  key={cryptoKey}
+                  type="button"
+                  onClick={() => {
+                    setMethod(
+                      cryptoKey
+                    );
+                    setReference("");
+                    setError("");
+                    setMessage(false);
+                  }}
+                  className="text-left p-4 border transition-all"
                   style={{
-                    background:
-                      "rgba(212,160,23,0.12)",
-                    color: "#d4a017",
+                    background: active
+                      ? "rgba(212,160,23,0.08)"
+                      : "#111118",
+                    borderColor: active
+                      ? "#d4a017"
+                      : "rgba(212,160,23,0.15)",
                   }}
                 >
-                  🏦
-                </div>
 
-                <div>
+                  <div
+                    className="w-10 h-10 flex items-center justify-center text-lg font-black"
+                    style={{
+                      background:
+                        "rgba(212,160,23,0.12)",
+                      color: "#d4a017",
+                    }}
+                  >
+                    {item.icon}
+                  </div>
 
-                  <p className="font-bold">
-                    Bank Transfer
+                  <p className="mt-3 font-bold">
+                    {item.name}
                   </p>
 
                   <p
                     className="text-xs mt-1"
-                    style={{ color: "#9090a8" }}
+                    style={{
+                      color: "#777789",
+                    }}
                   >
-                    Transfer directly to our bank
+                    {item.symbol}
                   </p>
 
-                </div>
-
-              </div>
-
-            </button>
-
-            {/* BITCOIN */}
-
-            <button
-              type="button"
-              onClick={() => {
-                setMethod("bitcoin");
-                setReference("");
-                setError("");
-              }}
-              className="text-left p-5 border transition-all"
-              style={{
-                background:
-                  method === "bitcoin"
-                    ? "rgba(212,160,23,0.08)"
-                    : "#111118",
-                borderColor:
-                  method === "bitcoin"
-                    ? "#d4a017"
-                    : "rgba(212,160,23,0.15)",
-              }}
-            >
-
-              <div className="flex items-center gap-3">
-
-                <div
-                  className="w-11 h-11 flex items-center justify-center text-xl"
-                  style={{
-                    background:
-                      "rgba(212,160,23,0.12)",
-                    color: "#d4a017",
-                  }}
-                >
-                  ₿
-                </div>
-
-                <div>
-
-                  <p className="font-bold">
-                    Bitcoin
-                  </p>
-
-                  <p
-                    className="text-xs mt-1"
-                    style={{ color: "#9090a8" }}
-                  >
-                    Send Bitcoin to our wallet
-                  </p>
-
-                </div>
-
-              </div>
-
-            </button>
+                </button>
+              );
+            })}
 
           </div>
 
@@ -342,7 +341,9 @@ export default function Deposit() {
 
           <label
             className="block text-sm font-semibold mb-2"
-            style={{ color: "#9090a8" }}
+            style={{
+              color: "#9090a8",
+            }}
           >
             Deposit Amount
           </label>
@@ -351,7 +352,9 @@ export default function Deposit() {
 
             <span
               className="absolute left-4 top-1/2 -translate-y-1/2 text-lg font-bold"
-              style={{ color: "#d4a017" }}
+              style={{
+                color: "#d4a017",
+              }}
             >
               $
             </span>
@@ -362,7 +365,9 @@ export default function Deposit() {
               step="0.01"
               value={amount}
               onChange={(e) =>
-                setAmount(e.target.value)
+                setAmount(
+                  e.target.value
+                )
               }
               placeholder="1000.00"
               className="w-full px-4 pl-9 py-4 bg-transparent border outline-none text-xl font-bold"
@@ -375,10 +380,20 @@ export default function Deposit() {
 
           </div>
 
+          <p
+            className="mt-2 text-xs"
+            style={{
+              color: "#777789",
+            }}
+          >
+            Enter the USD value you intend
+            to deposit.
+          </p>
+
         </div>
 
 
-        {/* EXACT AMOUNT WARNING */}
+        {/* EXACT AMOUNT */}
 
         <div
           className="p-5 border"
@@ -400,32 +415,39 @@ export default function Deposit() {
 
               <p
                 className="font-black text-sm uppercase tracking-wide"
-                style={{ color: "#e8b830" }}
+                style={{
+                  color: "#e8b830",
+                }}
               >
-                Transfer Exact Amount
+                Deposit Amount
               </p>
 
               <p
                 className="mt-2 text-sm leading-6"
-                style={{ color: "#d8d2c7" }}
+                style={{
+                  color: "#d8d2c7",
+                }}
               >
-                Transfer exactly{" "}
+                Your selected deposit value is{" "}
                 <strong
-                  style={{ color: "#f5f0e8" }}
+                  style={{
+                    color: "#f5f0e8",
+                  }}
                 >
                   {formattedAmount()}
                 </strong>
-                . Do not send more or less than
-                the amount entered above.
+                .
               </p>
 
               <p
                 className="mt-2 text-xs leading-5"
-                style={{ color: "#9090a8" }}
+                style={{
+                  color: "#9090a8",
+                }}
               >
-                Incorrect amounts may require
-                manual verification and can delay
-                the crediting of your wallet.
+                Make sure your submitted
+                transaction corresponds to
+                the deposit amount entered.
               </p>
 
             </div>
@@ -435,167 +457,65 @@ export default function Deposit() {
         </div>
 
 
-        {/* BANK DETAILS */}
+        {/* CRYPTO DETAILS */}
 
-        {method === "bank_transfer" && (
+        <div
+          className="p-5 sm:p-6 border"
+          style={{
+            background: "#111118",
+            borderColor:
+              "rgba(212,160,23,0.2)",
+          }}
+        >
 
-          <div
-            className="p-5 sm:p-6 border"
-            style={{
-              background: "#111118",
-              borderColor:
-                "rgba(212,160,23,0.2)",
-            }}
-          >
+          <div className="flex items-center gap-3 mb-5">
 
-            <div className="flex items-center justify-between gap-3 mb-5">
-
-              <div>
-
-                <h2 className="text-xl font-bold">
-                  Bank Transfer
-                </h2>
-
-                <p
-                  className="text-xs mt-1"
-                  style={{ color: "#9090a8" }}
-                >
-                  Use the details below to make
-                  your transfer.
-                </p>
-
-              </div>
-
-              <span
-                className="px-3 py-1 text-xs font-bold"
-                style={{
-                  background:
-                    "rgba(212,160,23,0.1)",
-                  color: "#d4a017",
-                }}
-              >
-                USD
-              </span>
-
+            <div
+              className="w-11 h-11 flex items-center justify-center text-xl font-black"
+              style={{
+                background:
+                  "rgba(212,160,23,0.12)",
+                color: "#d4a017",
+              }}
+            >
+              {crypto.icon}
             </div>
 
-            <div className="space-y-4">
+            <div>
 
-              <PaymentDetail
-                label="Bank"
-                value={bankName}
-              />
+              <h2 className="text-xl font-bold">
+                {crypto.name} Payment
+              </h2>
 
-              <PaymentDetail
-                label="Account Name"
-                value={accountName}
-              />
-
-              <div>
-
-                <p
-                  className="text-xs mb-2"
-                  style={{ color: "#777789" }}
-                >
-                  Account Number
-                </p>
-
-                <div className="flex items-center gap-2">
-
-                  <div
-                    className="flex-1 min-w-0 px-4 py-3 border font-mono text-sm"
-                    style={{
-                      background: "#09090e",
-                      borderColor:
-                        "rgba(212,160,23,0.15)",
-                    }}
-                  >
-                    {accountNumber}
-                  </div>
-
-                  <button
-                    type="button"
-                    onClick={() =>
-                      copyToClipboard(
-                        accountNumber,
-                        "account"
-                      )
-                    }
-                    className="px-4 py-3 text-sm font-bold shrink-0"
-                    style={{
-                      background:
-                        copied === "account"
-                          ? "#5dcc8a"
-                          : "#d4a017",
-                      color: "#09090e",
-                    }}
-                  >
-                    {copied === "account"
-                      ? "✓ Copied"
-                      : "Copy"}
-                  </button>
-
-                </div>
-
-              </div>
+              <p
+                className="text-xs mt-1"
+                style={{
+                  color: "#9090a8",
+                }}
+              >
+                Send only {crypto.symbol}
+                {" "}using the{" "}
+                {crypto.network}
+                {" "}network.
+              </p>
 
             </div>
 
           </div>
 
-        )}
-
-
-        {/* BITCOIN DETAILS */}
-
-        {method === "bitcoin" && (
-
-          <div
-            className="p-5 sm:p-6 border"
-            style={{
-              background: "#111118",
-              borderColor:
-                "rgba(212,160,23,0.2)",
-            }}
-          >
-
-            <div className="flex items-center gap-3 mb-5">
-
-              <div
-                className="w-11 h-11 flex items-center justify-center text-xl"
-                style={{
-                  background:
-                    "rgba(212,160,23,0.12)",
-                  color: "#d4a017",
-                }}
-              >
-                ₿
-              </div>
-
-              <div>
-
-                <h2 className="text-xl font-bold">
-                  Bitcoin Payment
-                </h2>
-
-                <p
-                  className="text-xs mt-1"
-                  style={{ color: "#9090a8" }}
-                >
-                  Send only BTC to this address.
-                </p>
-
-              </div>
-
-            </div>
+          {crypto.address ? (
 
             <div>
 
               <p
-                className="text-xs mb-2"
-                style={{ color: "#777789" }}
+                className="text-xs mb-2 uppercase tracking-wider"
+                style={{
+                  color: "#777789",
+                }}
               >
-                BTC WALLET ADDRESS           </p>
+                {crypto.symbol} Wallet
+                Address
+              </p>
 
               <div className="flex flex-col sm:flex-row gap-2">
 
@@ -607,27 +527,27 @@ export default function Deposit() {
                       "rgba(212,160,23,0.15)",
                   }}
                 >
-                  {btcAddress}
+                  {crypto.address}
                 </div>
 
                 <button
                   type="button"
                   onClick={() =>
                     copyToClipboard(
-                      btcAddress,
-                      "bitcoin"
+                      crypto.address,
+                      method
                     )
                   }
                   className="px-5 py-3 font-bold shrink-0"
                   style={{
                     background:
-                      copied === "bitcoin"
+                      copied === method
                         ? "#5dcc8a"
                         : "#d4a017",
                     color: "#09090e",
                   }}
                 >
-                  {copied === "bitcoin"
+                  {copied === method
                     ? "✓ Copied"
                     : "Copy Address"}
                 </button>
@@ -636,28 +556,49 @@ export default function Deposit() {
 
             </div>
 
+          ) : (
+
             <div
-              className="mt-5 p-4 border text-xs leading-5"
+              className="p-4 border text-sm"
               style={{
                 background:
-                  "rgba(255,70,70,0.05)",
+                  "rgba(255,170,0,0.05)",
                 borderColor:
-                  "rgba(255,70,70,0.15)",
-                color: "#ffb0b0",
+                  "rgba(212,160,23,0.2)",
+                color: "#d8d2c7",
               }}
             >
-              ⚠️ Send only Bitcoin (BTC) to the
-              address above. Sending another
-              cryptocurrency or using an incorrect
-              network may result in permanent loss.
+              The {crypto.name} payment
+              address has not been configured
+              yet. We will add the verified
+              wallet address before enabling
+              this payment method.
             </div>
 
+          )}
+
+          <div
+            className="mt-5 p-4 border text-xs leading-5"
+            style={{
+              background:
+                "rgba(255,70,70,0.05)",
+              borderColor:
+                "rgba(255,70,70,0.15)",
+              color: "#ffb0b0",
+            }}
+          >
+            ⚠️ Send only{" "}
+            {crypto.symbol} using the{" "}
+            {crypto.network} network.
+            Sending another cryptocurrency
+            or using an unsupported network
+            may result in permanent loss.
           </div>
 
-        )}
+        </div>
 
 
-        {/* SUBMISSION FORM */}
+        {/* CONFIRM PAYMENT */}
 
         <form
           onSubmit={submitDeposit}
@@ -670,48 +611,46 @@ export default function Deposit() {
         >
 
           <h2 className="text-xl font-bold">
-            Confirm Payment
+            Submit Payment
           </h2>
 
           <p
             className="text-sm mt-1 mb-5"
-            style={{ color: "#9090a8" }}
+            style={{
+              color: "#9090a8",
+            }}
           >
-            After completing your transfer, enter
-            the transaction details below.
+            After completing your crypto
+            transfer, enter the transaction
+            ID below.
           </p>
 
-          <div>
+          <label
+            className="block text-sm mb-2"
+            style={{
+              color: "#9090a8",
+            }}
+          >
+            {crypto.name} Transaction ID /
+            Hash
+          </label>
 
-            <label
-              className="block text-sm mb-2"
-              style={{ color: "#9090a8" }}
-            >
-              {method === "bank_transfer"
-                ? "Bank Transfer Reference"
-                : "Bitcoin Transaction ID / Hash"}
-            </label>
-
-            <input
-              type="text"
-              value={reference}
-              onChange={(e) =>
-                setReference(e.target.value)
-              }
-              placeholder={
-                method === "bank_transfer"
-                  ? "Enter your transfer reference"
-                  : "Enter your Bitcoin transaction ID"
-              }
-              className="w-full px-4 py-4 bg-transparent border outline-none"
-              style={{
-                color: "#f5f0e8",
-                borderColor:
-                  "rgba(212,160,23,0.25)",
-              }}
-            />
-
-          </div>
+          <input
+            type="text"
+            value={reference}
+            onChange={(e) =>
+              setReference(
+                e.target.value
+              )
+            }
+            placeholder={`Enter your ${crypto.symbol} transaction ID`}
+            className="w-full px-4 py-4 bg-transparent border outline-none"
+            style={{
+              color: "#f5f0e8",
+              borderColor:
+                "rgba(212,160,23,0.25)",
+            }}
+          />
 
 
           {error && (
@@ -735,39 +674,93 @@ export default function Deposit() {
           {message && (
 
             <div
-              className="mt-5 p-4 border text-sm"
+              className="mt-5 p-5 border"
               style={{
-                color: "#71d69a",
                 background:
-                  "rgba(50,180,100,0.06)",
+                  "rgba(212,160,23,0.06)",
                 borderColor:
-                  "rgba(50,180,100,0.2)",
+                  "rgba(212,160,23,0.25)",
               }}
             >
-              {message}
+
+              <div className="flex gap-4">
+
+                <div
+                  className="w-10 h-10 shrink-0 flex items-center justify-center font-black"
+                  style={{
+                    background:
+                      "rgba(212,160,23,0.12)",
+                    color: "#d4a017",
+                  }}
+                >
+                  ✓
+                </div>
+
+                <div>
+
+                  <p
+                    className="font-black text-base"
+                    style={{
+                      color: "#f5f0e8",
+                    }}
+                  >
+                    Payment Pending
+                  </p>
+
+                  <p
+                    className="mt-2 text-sm leading-6"
+                    style={{
+                      color: "#d8d2c7",
+                    }}
+                  >
+                    Your payment is currently
+                    being processed. Please allow
+                    up to 5 minutes for your
+                    account balance to be updated.
+                  </p>
+
+                  <p
+                    className="mt-2 text-sm leading-6"
+                    style={{
+                      color: "#9090a8",
+                    }}
+                  >
+                    For the latest balance, please
+                    refresh your dashboard to view
+                    your current available balance.
+                  </p>
+
+                </div>
+
+              </div>
+
             </div>
 
           )}
 
 
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full mt-5 px-6 py-4 font-bold"
-            style={{
-              background: loading
-                ? "#6d5a1f"
-                : "#d4a017",
-              color: "#09090e",
-              cursor: loading
-                ? "not-allowed"
-                : "pointer",
-            }}
-          >
-            {loading
-              ? "Submitting..."
-              : "I've Made the Payment"}
-          </button>
+          {!message && (
+
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full mt-5 px-6 py-4 font-bold"
+              style={{
+                background: loading
+                  ? "#6d5a1f"
+                  : "#d4a017",
+                color: "#09090e",
+                cursor: loading
+                  ? "not-allowed"
+                  : "pointer",
+              }}
+            >
+              {loading
+                ? "Submitting..."
+                : "I've Made the Payment"}
+            </button>
+
+          )}
 
         </form>
 
@@ -775,40 +768,14 @@ export default function Deposit() {
         <Link
           to="/dashboard/wallet"
           className="inline-flex items-center text-sm"
-          style={{ color: "#d4a017" }}
+          style={{
+            color: "#d4a017",
+          }}
         >
           ← Back to Wallet
         </Link>
 
       </div>
-
-    </div>
-  );
-}
-
-
-/* PAYMENT DETAIL */
-
-function PaymentDetail({
-  label,
-  value,
-}: {
-  label: string;
-  value: string;
-}) {
-  return (
-    <div>
-
-      <p
-        className="text-xs"
-        style={{ color: "#777789" }}
-      >
-        {label}
-      </p>
-
-      <p className="font-semibold mt-1 break-words">
-        {value}
-      </p>
 
     </div>
   );

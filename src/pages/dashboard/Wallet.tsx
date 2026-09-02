@@ -46,8 +46,14 @@ export default function Wallet() {
     return `$${Number(value ?? 0).toLocaleString("en-US", {
       minimumFractionDigits: 2,
       maximumFractionDigits: 2,
-    })}`;
+    })
+      } `;
   }
+
+  // Total Balance = Available Balance + Total Profit
+  const totalBalance =
+    Number(wallet?.available_balance ?? 0) +
+    Number(wallet?.total_profit ?? 0);
 
   if (loading) {
     return <p style={{ color: "#9090a8" }}>Loading wallet...</p>;
@@ -62,17 +68,38 @@ export default function Wallet() {
         </p>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-        <WalletCard title="Available Balance" value={money(wallet?.available_balance)} />
-        <WalletCard title="Invested Balance" value={money(wallet?.invested_balance)} />
-        <WalletCard title="Total Profit" value={money(wallet?.total_profit)} gold />
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-5">
+        <WalletCard
+          title="Total Balance"
+          value={money(totalBalance)}
+          gold
+        />
+
+        <WalletCard
+          title="Available Balance"
+          value={money(wallet?.available_balance)}
+        />
+
+        <WalletCard
+          title="Invested Balance"
+          value={money(wallet?.invested_balance)}
+        />
+
+        <WalletCard
+          title="Total Profit"
+          value={money(wallet?.total_profit)}
+          gold
+        />
       </div>
 
       <div className="flex flex-wrap gap-4 mt-8">
         <Link
           to="/dashboard/deposit"
           className="px-6 py-3 text-sm font-bold"
-          style={{ background: "#d4a017", color: "#09090e" }}
+          style={{
+            background: "#d4a017",
+            color: "#09090e",
+          }}
         >
           Deposit
         </Link>

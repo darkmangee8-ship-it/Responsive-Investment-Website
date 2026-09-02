@@ -1447,6 +1447,37 @@ export default function AdminDashboard() {
                       {unreadNotifications}
                     </span>
                   )}
+                {value === "deposits" &&
+                  deposits.length > 0 && (
+                    <span
+                      className="ml-auto min-w-5 h-5 px-1 flex items-center justify-center rounded-full text-[10px] font-black"
+                      style={{
+                        background: "#d4a017",
+                        color: "#09090e",
+                      }}
+                    >
+                      {deposits.length}
+                    </span>
+                  )}
+
+                {value === "withdrawals" &&
+                  withdrawals.filter(
+                    (w) => w.status === "PENDING"
+                  ).length > 0 && (
+                    <span
+                      className="ml-auto min-w-5 h-5 px-1 flex items-center justify-center rounded-full text-[10px] font-black"
+                      style={{
+                        background: "#d4a017",
+                        color: "#09090e",
+                      }}
+                    >
+                      {
+                        withdrawals.filter(
+                          (w) => w.status === "PENDING"
+                        ).length
+                      }
+                    </span>
+                  )}
 
                 {value ===
                   "support" &&
@@ -1691,6 +1722,37 @@ export default function AdminDashboard() {
                         }}
                       >
                         {unreadNotifications}
+                      </span>
+                    )}
+                  {value === "deposits" &&
+                    deposits.length > 0 && (
+                      <span
+                        className="ml-auto min-w-5 h-5 px-1 flex items-center justify-center rounded-full text-[10px] font-black"
+                        style={{
+                          background: "#d4a017",
+                          color: "#09090e",
+                        }}
+                      >
+                        {deposits.length}
+                      </span>
+                    )}
+
+                  {value === "withdrawals" &&
+                    withdrawals.filter(
+                      (w) => w.status === "PENDING"
+                    ).length > 0 && (
+                      <span
+                        className="ml-auto min-w-5 h-5 px-1 flex items-center justify-center rounded-full text-[10px] font-black"
+                        style={{
+                          background: "#d4a017",
+                          color: "#09090e",
+                        }}
+                      >
+                        {
+                          withdrawals.filter(
+                            (w) => w.status === "PENDING"
+                          ).length
+                        }
                       </span>
                     )}
 
