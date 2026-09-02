@@ -200,13 +200,6 @@ export default function Dashboard() {
             </span>
           </div>
 
-          <p
-            className="mt-3 text-sm"
-            style={{ color: "#777789" }}
-          >
-            Available balance + accrued profit
-          </p>
-
           <div className="mt-7 grid grid-cols-1 sm:grid-cols-3 gap-4">
 
             <BalanceItem
