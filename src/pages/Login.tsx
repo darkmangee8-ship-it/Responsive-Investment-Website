@@ -1,5 +1,6 @@
 import { useState, FormEvent } from "react";
 import { Link, useNavigate } from "react-router";
+import { Eye, EyeOff } from "lucide-react";
 import { supabase } from "../lib/supabase";
 
 export default function Login() {
@@ -13,6 +14,7 @@ export default function Login() {
   const [resetSent, setResetSent] = useState(false);
   const [resetLoading, setResetLoading] = useState(false);
   const [resetError, setResetError] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
 
   function handleChange(e: React.ChangeEvent<HTMLInputElement>) {
     setForm((f) => ({ ...f, [e.target.name]: e.target.value }));
@@ -66,12 +68,10 @@ export default function Login() {
         throw new Error("Please enter a valid email address.");
       }
 
-      const { error: resetError } = await supabase.auth.resetPasswordForEmail(
-        email,
-        {
+      const { error: resetError } =
+        await supabase.auth.resetPasswordForEmail(email, {
           redirectTo: `${window.location.origin}/reset-password`,
-        }
-      );
+        });
 
       if (resetError) {
         throw resetError;
@@ -304,16 +304,47 @@ export default function Login() {
                   </button>
                 </div>
 
-                <input
-                  type="password"
-                  name="password"
-                  required
-                  value={form.password}
-                  onChange={handleChange}
-                  style={inputStyle}
-                  placeholder="••••••••"
-                  autoComplete="current-password"
-                />
+                <div className="relative">
+                  <input
+                    type={showPassword ? "text" : "password"}
+                    name="password"
+                    required
+                    value={form.password}
+                    onChange={handleChange}
+                    style={{
+                      ...inputStyle,
+                      paddingRight: "3rem",
+                    }}
+                    placeholder="••••••••"
+                    autoComplete="current-password"
+                  />
+
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setShowPassword((visible) => !visible)
+                    }
+                    aria-label={
+                      showPassword
+                        ? "Hide password"
+                        : "Show password"
+                    }
+                    className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center justify-center"
+                    style={{
+                      background: "transparent",
+                      border: "none",
+                      color: "#9090a8",
+                      cursor: "pointer",
+                      padding: "4px",
+                    }}
+                  >
+                    {showPassword ? (
+                      <EyeOff size={18} strokeWidth={1.8} />
+                    ) : (
+                      <Eye size={18} strokeWidth={1.8} />
+                    )}
+                  </button>
+                </div>
               </div>
 
               <button

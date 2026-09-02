@@ -1,5 +1,6 @@
 import { useState, FormEvent } from "react";
 import { Link, useNavigate } from "react-router";
+import { Eye, EyeOff } from "lucide-react";
 import { supabase } from "../lib/supabase";
 
 const countries = [
@@ -16,6 +17,63 @@ const countries = [
   "United Arab Emirates",
   "Other",
 ];
+
+const countryPhoneData: Record<
+  string,
+  {
+    code: string;
+    placeholder: string;
+  }
+> = {
+  Nigeria: {
+    code: "+234",
+    placeholder: "+234 801 234 5678",
+  },
+  Ghana: {
+    code: "+233",
+    placeholder: "+233 24 123 4567",
+  },
+  "South Africa": {
+    code: "+27",
+    placeholder: "+27 82 123 4567",
+  },
+  Kenya: {
+    code: "+254",
+    placeholder: "+254 712 345678",
+  },
+  "United Kingdom": {
+    code: "+44",
+    placeholder: "+44 7911 123456",
+  },
+  "United States": {
+    code: "+1",
+    placeholder: "+1 201 555 0123",
+  },
+  Canada: {
+    code: "+1",
+    placeholder: "+1 416 555 0123",
+  },
+  Australia: {
+    code: "+61",
+    placeholder: "+61 412 345 678",
+  },
+  Germany: {
+    code: "+49",
+    placeholder: "+49 151 23456789",
+  },
+  France: {
+    code: "+33",
+    placeholder: "+33 6 12 34 56 78",
+  },
+  "United Arab Emirates": {
+    code: "+971",
+    placeholder: "+971 50 123 4567",
+  },
+  Other: {
+    code: "",
+    placeholder: "+1 201 555 0123",
+  },
+};
 
 export default function Register() {
   const navigate = useNavigate();
@@ -34,7 +92,18 @@ export default function Register() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
-  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>(
+    {}
+  );
+
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+
+  const selectedPhoneData =
+    countryPhoneData[form.country] || {
+      code: "+1",
+      placeholder: "+1 201 555 0123",
+    };
 
   function handleChange(
     e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>
@@ -52,6 +121,56 @@ export default function Register() {
     setFieldErrors((fe) => ({
       ...fe,
       [name]: "",
+    }));
+
+    setError("");
+    setSuccess("");
+  }
+
+  function handleCountryChange(
+    e: React.ChangeEvent<HTMLSelectElement>
+  ) {
+    const country = e.target.value;
+
+    setForm((f) => ({
+      ...f,
+      country,
+      phone: "",
+    }));
+
+    setFieldErrors((fe) => ({
+      ...fe,
+      country: "",
+      phone: "",
+    }));
+
+    setError("");
+    setSuccess("");
+  }
+
+  function handlePhoneChange(
+    e: React.ChangeEvent<HTMLInputElement>
+  ) {
+    let value = e.target.value;
+
+    /*
+     * If the selected country has a country code,
+     * automatically keep it at the beginning.
+     */
+    if (selectedPhoneData.code) {
+      if (!value.startsWith(selectedPhoneData.code)) {
+        value = `${selectedPhoneData.code} ${value.replace(/^\+?\d*\s*/, "")}`;
+      }
+    }
+
+    setForm((f) => ({
+      ...f,
+      phone: value,
+    }));
+
+    setFieldErrors((fe) => ({
+      ...fe,
+      phone: "",
     }));
 
     setError("");
@@ -205,6 +324,9 @@ export default function Register() {
           confirmPassword: "",
           agreed: false,
         });
+
+        setShowPassword(false);
+        setShowConfirmPassword(false);
 
         return;
       }
@@ -419,7 +541,7 @@ export default function Register() {
                 name="country"
                 required
                 value={form.country}
-                onChange={handleChange}
+                onChange={handleCountryChange}
                 style={inputStyle(!!fieldErrors.country)}
               >
                 <option
@@ -455,16 +577,70 @@ export default function Register() {
                 Phone Number
               </label>
 
-              <input
-                type="tel"
-                name="phone"
-                required
-                value={form.phone}
-                onChange={handleChange}
-                style={inputStyle(!!fieldErrors.phone)}
-                placeholder="+1 8012345678"
-                autoComplete="tel"
-              />
+              <div className="relative">
+                {selectedPhoneData.code && (
+                  <div
+                    className="absolute left-0 top-0 bottom-0 flex items-center px-3"
+                    style={{
+                      color: "#d4a017",
+                      borderRight: "1px solid rgba(212,160,23,0.2)",
+                      fontSize: "0.875rem",
+                      fontWeight: 600,
+                      pointerEvents: "none",
+                    }}
+                  >
+                    {selectedPhoneData.code}
+                  </div>
+                )}
+
+                <input
+                  type="tel"
+                  name="phone"
+                  required
+                  value={
+                    selectedPhoneData.code &&
+                      form.phone.startsWith(selectedPhoneData.code)
+                      ? form.phone.slice(selectedPhoneData.code.length).trimStart()
+                      : form.phone
+                  }
+                  onChange={(e) => {
+                    const inputValue = e.target.value;
+
+                    if (selectedPhoneData.code) {
+                      setForm((f) => ({
+                        ...f,
+                        phone: `${selectedPhoneData.code} ${inputValue}`,
+                      }));
+                    } else {
+                      handlePhoneChange(e);
+                    }
+
+                    setFieldErrors((fe) => ({
+                      ...fe,
+                      phone: "",
+                    }));
+
+                    setError("");
+                    setSuccess("");
+                  }}
+                  style={{
+                    ...inputStyle(!!fieldErrors.phone),
+                    paddingLeft: selectedPhoneData.code
+                      ? "4.5rem"
+                      : "1rem",
+                  }}
+                  placeholder={
+                    selectedPhoneData.code
+                      ? selectedPhoneData.placeholder.replace(
+                        selectedPhoneData.code,
+                        ""
+                      ).trim()
+                      : selectedPhoneData.placeholder
+                  }
+                  autoComplete="tel"
+                  inputMode="tel"
+                />
+              </div>
 
               {fieldErrors.phone && (
                 <p
@@ -481,16 +657,47 @@ export default function Register() {
                 Password
               </label>
 
-              <input
-                type="password"
-                name="password"
-                required
-                value={form.password}
-                onChange={handleChange}
-                style={inputStyle(!!fieldErrors.password)}
-                placeholder="Minimum 8 characters"
-                autoComplete="new-password"
-              />
+              <div className="relative">
+                <input
+                  type={showPassword ? "text" : "password"}
+                  name="password"
+                  required
+                  value={form.password}
+                  onChange={handleChange}
+                  style={{
+                    ...inputStyle(!!fieldErrors.password),
+                    paddingRight: "3rem",
+                  }}
+                  placeholder="Minimum 8 characters"
+                  autoComplete="new-password"
+                />
+
+                <button
+                  type="button"
+                  onClick={() =>
+                    setShowPassword((visible) => !visible)
+                  }
+                  aria-label={
+                    showPassword
+                      ? "Hide password"
+                      : "Show password"
+                  }
+                  className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center justify-center"
+                  style={{
+                    background: "transparent",
+                    border: "none",
+                    color: "#9090a8",
+                    cursor: "pointer",
+                    padding: "4px",
+                  }}
+                >
+                  {showPassword ? (
+                    <EyeOff size={18} strokeWidth={1.8} />
+                  ) : (
+                    <Eye size={18} strokeWidth={1.8} />
+                  )}
+                </button>
+              </div>
 
               {fieldErrors.password && (
                 <p
@@ -507,16 +714,55 @@ export default function Register() {
                 Confirm Password
               </label>
 
-              <input
-                type="password"
-                name="confirmPassword"
-                required
-                value={form.confirmPassword}
-                onChange={handleChange}
-                style={inputStyle(!!fieldErrors.confirmPassword)}
-                placeholder="Repeat your password"
-                autoComplete="new-password"
-              />
+              <div className="relative">
+                <input
+                  type={
+                    showConfirmPassword
+                      ? "text"
+                      : "password"
+                  }
+                  name="confirmPassword"
+                  required
+                  value={form.confirmPassword}
+                  onChange={handleChange}
+                  style={{
+                    ...inputStyle(
+                      !!fieldErrors.confirmPassword
+                    ),
+                    paddingRight: "3rem",
+                  }}
+                  placeholder="Repeat your password"
+                  autoComplete="new-password"
+                />
+
+                <button
+                  type="button"
+                  onClick={() =>
+                    setShowConfirmPassword(
+                      (visible) => !visible
+                    )
+                  }
+                  aria-label={
+                    showConfirmPassword
+                      ? "Hide confirm password"
+                      : "Show confirm password"
+                  }
+                  className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center justify-center"
+                  style={{
+                    background: "transparent",
+                    border: "none",
+                    color: "#9090a8",
+                    cursor: "pointer",
+                    padding: "4px",
+                  }}
+                >
+                  {showConfirmPassword ? (
+                    <EyeOff size={18} strokeWidth={1.8} />
+                  ) : (
+                    <Eye size={18} strokeWidth={1.8} />
+                  )}
+                </button>
+              </div>
 
               {fieldErrors.confirmPassword && (
                 <p
